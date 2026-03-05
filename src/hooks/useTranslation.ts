@@ -1,93 +1,72 @@
-import { useState } from 'react'
-import { WhisperSegment } from '../services/whisperService'
+import { Segment } from '../types'
 import {
-  SegmentAnalysis,
   fileToBase64,
-  firstPassTranscribe,
-  reconcileAndAnalyze,
-  reanalyzeSingle,
+  analyzeComprehensive,
+  mapToSegments,
+  mapToSongOverview,
   translateSingle,
 } from '../services/geminiService'
+import { transcribeAudio } from '../services/whisperService'
+import { SongOverviewData } from '../types'
 
-export type AnalysisStep = 'idle' | 'gemini_first' | 'reconciling'
-
-interface UseTranslationDeps {
+interface UseAnalysisDeps {
+  segments: Segment[]
+  setTranscribing: () => void
+  setAnalyzing: () => void
+  setResults: (segments: Segment[], overview: SongOverviewData) => void
+  setError: (message: string) => void
   setSegmentTranslating: (id: number, value: boolean) => void
-  applyFullAnalysis: (results: SegmentAnalysis[]) => void
-  updateSegmentAnalysis: (
-    id: number,
-    analysis: Partial<Pick<SegmentAnalysis, 'korean' | 'english' | 'emotion' | 'confidence'>>
-  ) => void
   updateEnglish: (id: number, value: string) => void
 }
 
 export function useTranslation({
+  segments,
+  setTranscribing,
+  setAnalyzing,
+  setResults,
+  setError,
   setSegmentTranslating,
-  applyFullAnalysis,
-  updateSegmentAnalysis,
   updateEnglish,
-}: UseTranslationDeps) {
-  const [analysisStep, setAnalysisStep] = useState<AnalysisStep>('idle')
-  const [analysisError, setAnalysisError] = useState('')
+}: UseAnalysisDeps) {
 
   /**
-   * 3단계 팀 분석:
-   * Whisper 결과 → Gemini 1차 독립 인식 → Gemini 2차 교차 검증
+   * 전체 분석 실행:
+   * Whisper(타임스탬프) → Gemini(오디오+가사 종합 분석)
    */
-  const analyzeAll = async (audioFile: File, whisperSegments: WhisperSegment[]) => {
-    setAnalysisError('')
+  const analyzeAll = async (audioFile: File, userLyrics: string) => {
     try {
-      // 오디오를 base64로 한 번만 변환하여 재사용
+      setTranscribing()
+      const whisperSegments = await transcribeAudio(audioFile)
+
+      setAnalyzing()
       const base64Audio = await fileToBase64(audioFile)
       const mimeType = audioFile.type || 'audio/mpeg'
-
-      // 2단계: Gemini 1차 독립 인식 (Whisper 결과 미참조)
-      setAnalysisStep('gemini_first')
-      const geminiFirstPass = await firstPassTranscribe(base64Audio, mimeType, whisperSegments)
-
-      // 3단계: 두 AI 결과 교차 검증 후 최종 확정
-      setAnalysisStep('reconciling')
-      const finalResults = await reconcileAndAnalyze(
+      const result = await analyzeComprehensive(
         base64Audio,
         mimeType,
         whisperSegments,
-        geminiFirstPass
+        userLyrics || undefined
       )
 
-      applyFullAnalysis(finalResults)
+      setResults(mapToSegments(result), mapToSongOverview(result))
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : '분석에 실패했습니다.'
-      setAnalysisError(message)
-    } finally {
-      setAnalysisStep('idle')
+      setError(message)
     }
   }
 
   /**
-   * 개별 세그먼트 재분석: 한국어 교정 + 번역 + 감정 + 신뢰도 (텍스트 기반)
-   */
-  const reanalyzeSegment = async (id: number, koreanText: string) => {
-    setSegmentTranslating(id, true)
-    try {
-      const result = await reanalyzeSingle(koreanText)
-      updateSegmentAnalysis(id, {
-        korean: result.korean,
-        english: result.english,
-        emotion: result.emotion,
-        confidence: result.confidence,
-      })
-    } catch {
-      setSegmentTranslating(id, false)
-    }
-  }
-
-  /**
-   * 개별 세그먼트 영어 번역만 재실행 (한국어 직접 수정 후)
+   * 개별 세그먼트 영어 재번역 (한국어 수정 후)
    */
   const retranslateSegment = async (id: number, koreanText: string) => {
     setSegmentTranslating(id, true)
     try {
-      const english = await translateSingle(koreanText)
+      const index = segments.findIndex((s) => s.id === id)
+      const context = {
+        prev: index > 0 ? segments[index - 1].korean : undefined,
+        next: index < segments.length - 1 ? segments[index + 1].korean : undefined,
+      }
+      const english = await translateSingle(koreanText, context)
       updateEnglish(id, english)
       setSegmentTranslating(id, false)
     } catch {
@@ -95,11 +74,5 @@ export function useTranslation({
     }
   }
 
-  return {
-    analysisStep,
-    analysisError,
-    analyzeAll,
-    reanalyzeSegment,
-    retranslateSegment,
-  }
+  return { analyzeAll, retranslateSegment }
 }
