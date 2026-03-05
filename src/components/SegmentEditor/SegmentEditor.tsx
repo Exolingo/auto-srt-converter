@@ -1,53 +1,45 @@
-import { Segment } from '../../types'
+import { Segment, SongOverviewData } from '../../types'
 import { SegmentRow } from './SegmentRow'
-import { EmotionBadge } from './EmotionBadge'
+import { SegmentNav } from './SegmentNav'
+import { SongOverview } from '../SongOverview'
 import { downloadSrtFile } from '../../utils/srtGenerator'
 
 interface Props {
   segments: Segment[]
+  songOverview: SongOverviewData
   fileName: string
-  analysisError: string
+  errorMessage: string
   onKoreanChange: (id: number, value: string) => void
   onEnglishChange: (id: number, value: string) => void
-  onReanalyze: (id: number, koreanText: string) => void
   onRetranslate: (id: number, koreanText: string) => void
   onReset: () => void
 }
 
-function getEmotionSummary(segments: Segment[]): string[] {
-  const counts = new Map<string, number>()
-  segments.forEach((s) => {
-    if (s.emotion) counts.set(s.emotion, (counts.get(s.emotion) ?? 0) + 1)
-  })
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([emotion]) => emotion)
+function scrollToSegment(id: number) {
+  document.getElementById(`segment-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
 export function SegmentEditor({
   segments,
+  songOverview,
   fileName,
-  analysisError,
+  errorMessage,
   onKoreanChange,
   onEnglishChange,
-  onReanalyze,
   onRetranslate,
   onReset,
 }: Props) {
-  const dominantEmotions = getEmotionSummary(segments)
-
   return (
     <div className="max-w-3xl mx-auto">
       {/* 고정 헤더 */}
-      <div className="sticky top-0 z-10 bg-surface-900 pb-4 pt-2">
+      <div className="sticky top-0 z-10 bg-surface-900 pb-3 pt-2 space-y-3">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <button onClick={onReset} className="text-slate-400 hover:text-white transition-colors shrink-0">
               ← 새 파일
             </button>
             <h2 className="text-white font-semibold truncate">{fileName}</h2>
-            <span className="text-slate-500 text-sm shrink-0">{segments.length}개 세그먼트</span>
+            <span className="text-slate-500 text-sm shrink-0">{segments.length}개 문장</span>
           </div>
           <button
             onClick={() => downloadSrtFile(segments, fileName)}
@@ -57,22 +49,14 @@ export function SegmentEditor({
           </button>
         </div>
 
-        {analysisError && <p className="text-red-400 text-xs mt-2">{analysisError}</p>}
+        <SegmentNav segments={segments} onJumpTo={scrollToSegment} />
+        {errorMessage && <p className="text-red-400 text-xs">{errorMessage}</p>}
       </div>
 
-      {/* 감정 분석 요약 카드 */}
-      {dominantEmotions.length > 0 && (
-        <div className="mb-5 bg-surface-800 rounded-xl border border-surface-600 p-4">
-          <p className="text-xs text-slate-500 font-medium mb-2">이 곡의 주요 감정</p>
-          <div className="flex flex-wrap gap-2">
-            {dominantEmotions.map((emotion) => (
-              <EmotionBadge key={emotion} emotion={emotion} />
-            ))}
-          </div>
-        </div>
-      )}
+      {/* 곡 분석 개요 */}
+      <SongOverview overview={songOverview} />
 
-      {/* 세그먼트 목록 */}
+      {/* 문장 목록 */}
       <div className="space-y-3">
         {segments.map((segment, index) => (
           <SegmentRow
@@ -81,7 +65,6 @@ export function SegmentEditor({
             index={index}
             onKoreanChange={onKoreanChange}
             onEnglishChange={onEnglishChange}
-            onReanalyze={onReanalyze}
             onRetranslate={onRetranslate}
           />
         ))}
