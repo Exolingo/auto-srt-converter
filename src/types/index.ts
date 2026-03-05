@@ -6,6 +6,7 @@ export interface Segment {
   english: string
   emotion: string
   energy: 'low' | 'medium' | 'high' | ''
+  vocal_gender: '남성' | '여성' | '혼성' | ''
   notes: string
   isTranslating: boolean
 }

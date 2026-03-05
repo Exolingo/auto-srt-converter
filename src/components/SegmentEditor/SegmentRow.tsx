@@ -1,5 +1,4 @@
 import { Segment } from '../../types'
-import { EmotionBadge } from './EmotionBadge'
 
 interface Props {
   segment: Segment
@@ -15,6 +14,22 @@ function formatTime(seconds: number): string {
   const s = Math.floor(seconds % 60)
   const ms = Math.round((seconds % 1) * 10)
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${ms}`
+}
+
+const GENDER_STYLE: Record<string, string> = {
+  남성: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+  여성: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
+  혼성: 'bg-violet-500/20 text-violet-300 border-violet-500/30',
+}
+
+function VocalGenderBadge({ gender }: { gender: Segment['vocal_gender'] }) {
+  if (!gender) return null
+  const style = GENDER_STYLE[gender] ?? 'bg-surface-600 text-slate-300 border-surface-500'
+  return (
+    <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${style}`}>
+      {gender}
+    </span>
+  )
 }
 
 function EnergyDots({ energy }: { energy: Segment['energy'] }) {
@@ -48,7 +63,6 @@ export function SegmentRow({ segment, index, instruments, onKoreanChange, onEngl
             {formatTime(segment.start_sec)} → {formatTime(segment.end_sec)}
           </span>
           <EnergyDots energy={segment.energy} />
-          <EmotionBadge emotion={segment.emotion} />
           {instruments.length > 0 && (
             <div className="ml-auto flex flex-wrap gap-1 justify-end">
               {instruments.map((inst) => (
@@ -63,8 +77,13 @@ export function SegmentRow({ segment, index, instruments, onKoreanChange, onEngl
 
       {/* 가사 */}
       <div className="p-4 space-y-3">
-        {segment.notes && (
-          <p className="text-xs text-slate-500 leading-relaxed">{segment.notes}</p>
+        {(segment.vocal_gender || segment.notes) && (
+          <div className="flex items-start gap-2">
+            <VocalGenderBadge gender={segment.vocal_gender} />
+            {segment.notes && (
+              <p className="text-xs text-slate-400 leading-relaxed">{segment.notes}</p>
+            )}
+          </div>
         )}
         <div>
           <label className="text-xs text-slate-500 font-medium block mb-1">한국어</label>
