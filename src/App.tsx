@@ -1,51 +1,55 @@
-import { useState } from 'react'
 import { useAuth } from './hooks/useAuth'
 import { useTranscription } from './hooks/useTranscription'
-import { useTranslation, AnalysisStep } from './hooks/useTranslation'
+import { useTranslation } from './hooks/useTranslation'
 import { LoginPage } from './components/LoginPage'
 import { UploadZone } from './components/UploadZone'
 import { ProcessingOverlay } from './components/ProcessingOverlay'
 import { SegmentEditor } from './components/SegmentEditor/SegmentEditor'
-
-type ProcessingStep = 'transcribing' | AnalysisStep
+import { useState } from 'react'
 
 export default function App() {
   const { isAuthenticated, error: authError, login, logout } = useAuth()
   const {
     segments,
+    songOverview,
     status,
     errorMessage,
-    transcribe,
-    applyFullAnalysis,
+    setTranscribing,
+    setAnalyzing,
+    setResults,
+    setError,
     updateKorean,
     updateEnglish,
-    updateSegmentAnalysis,
     setSegmentTranslating,
+    reset,
   } = useTranscription()
 
-  const { analysisStep, analysisError, analyzeAll, reanalyzeSegment, retranslateSegment } =
-    useTranslation({ setSegmentTranslating, applyFullAnalysis, updateSegmentAnalysis, updateEnglish })
+  const { analyzeAll, retranslateSegment } = useTranslation({
+    segments,
+    setTranscribing,
+    setAnalyzing,
+    setResults,
+    setError,
+    setSegmentTranslating,
+    updateEnglish,
+  })
 
   const [fileName, setFileName] = useState('')
-  const [processingStep, setProcessingStep] = useState<ProcessingStep>('idle')
 
-  const handleFileSelect = async (file: File) => {
+  const handleAnalyze = (file: File, lyrics: string) => {
     setFileName(file.name)
-    setProcessingStep('transcribing')
-
-    const whisperResult = await transcribe(file)
-    if (!whisperResult) {
-      setProcessingStep('idle')
-      return
-    }
-
-    // analyzeAll 내부에서 analysisStep이 변하므로 ProcessingOverlay는 analysisStep을 직접 반영
-    await analyzeAll(file, whisperResult)
-    setProcessingStep('idle')
+    analyzeAll(file, lyrics)
   }
 
-  const activeStep: ProcessingStep =
-    processingStep === 'transcribing' ? 'transcribing' : analysisStep
+  const handleReset = () => {
+    reset()
+    setFileName('')
+  }
+
+  const processingStep =
+    status === 'transcribing' ? 'transcribing'
+    : status === 'analyzing' ? 'analyzing'
+    : null
 
   if (!isAuthenticated) {
     return <LoginPage onLogin={login} error={authError} />
@@ -53,7 +57,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-surface-900 text-white">
-      {activeStep !== 'idle' && <ProcessingOverlay step={activeStep} />}
+      {processingStep && <ProcessingOverlay step={processingStep} />}
 
       <header className="border-b border-surface-700 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -71,10 +75,10 @@ export default function App() {
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold">뮤직비디오 자막 생성</h2>
               <p className="text-slate-400 text-sm mt-2">
-                Whisper · Gemini가 독립 분석 후 교차 검증 → 가사 교정 · 영어 번역 · 감정 분석
+                MP3와 가사를 입력하면 Gemini가 타임스탬프 매핑 · 영어 번역 · 감정/에너지 분석을 자동으로 수행합니다
               </p>
             </div>
-            <UploadZone onFileSelect={handleFileSelect} />
+            <UploadZone onAnalyze={handleAnalyze} />
             {status === 'error' && (
               <div className="mt-4 bg-red-900/30 border border-red-700 rounded-xl p-4">
                 <p className="text-red-400 text-sm font-medium">오류 발생</p>
@@ -82,18 +86,18 @@ export default function App() {
               </div>
             )}
           </div>
-        ) : (
+        ) : status === 'done' && songOverview ? (
           <SegmentEditor
             segments={segments}
+            songOverview={songOverview}
             fileName={fileName}
-            analysisError={analysisError}
+            errorMessage={errorMessage}
             onKoreanChange={updateKorean}
             onEnglishChange={updateEnglish}
-            onReanalyze={reanalyzeSegment}
             onRetranslate={retranslateSegment}
-            onReset={() => window.location.reload()}
+            onReset={handleReset}
           />
-        )}
+        ) : null}
       </main>
     </div>
   )

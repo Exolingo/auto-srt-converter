@@ -15,7 +15,7 @@ function pad(n: number, length: number): string {
 export function generateSrtContent(segments: Segment[]): string {
   return segments
     .map((seg, index) => {
-      const timeRange = `${formatSrtTime(seg.start)} --> ${formatSrtTime(seg.end)}`
+      const timeRange = `${formatSrtTime(seg.start_sec)} --> ${formatSrtTime(seg.end_sec)}`
       const lines = [seg.korean, seg.english].filter(Boolean).join('\n')
       return `${index + 1}\n${timeRange}\n${lines}`
     })
