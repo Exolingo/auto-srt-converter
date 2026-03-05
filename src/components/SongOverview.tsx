@@ -44,9 +44,6 @@ export function SongOverview({ overview }: Props) {
         <div className="flex flex-wrap gap-2 items-center">
           <Chip label={ma.tempo} color={TEMPO_COLOR[ma.tempo] ?? 'bg-surface-600 text-slate-300 border-surface-500'} />
           <Chip label={ma.genre_hint} color="bg-violet-500/20 text-violet-300 border-violet-500/30" />
-          {ma.instruments.map((inst) => (
-            <Chip key={inst} label={inst} color="bg-surface-600 text-slate-300 border-surface-500" />
-          ))}
         </div>
         <p className="text-slate-400 text-xs">🎤 {ma.vocal_style}</p>
       </div>

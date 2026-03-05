@@ -63,6 +63,7 @@ export function SegmentEditor({
             key={segment.id}
             segment={segment}
             index={index}
+            instruments={songOverview.music_analysis.instruments}
             onKoreanChange={onKoreanChange}
             onEnglishChange={onEnglishChange}
             onRetranslate={onRetranslate}

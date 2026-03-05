@@ -4,6 +4,7 @@ import { EmotionBadge } from './EmotionBadge'
 interface Props {
   segment: Segment
   index: number
+  instruments: string[]
   onKoreanChange: (id: number, value: string) => void
   onEnglishChange: (id: number, value: string) => void
   onRetranslate: (id: number, koreanText: string) => void
@@ -34,28 +35,37 @@ function EnergyDots({ energy }: { energy: Segment['energy'] }) {
   )
 }
 
-export function SegmentRow({ segment, index, onKoreanChange, onEnglishChange, onRetranslate }: Props) {
+export function SegmentRow({ segment, index, instruments, onKoreanChange, onEnglishChange, onRetranslate }: Props) {
   return (
     <div id={`segment-${segment.id}`} className="bg-surface-800 rounded-xl border border-surface-600 overflow-hidden">
       {/* 헤더 */}
-      <div className="flex items-center gap-2 px-4 py-2.5 bg-surface-700 border-b border-surface-600 flex-wrap">
-        <span className="text-xs font-mono text-slate-500 bg-surface-900 px-2 py-0.5 rounded shrink-0">
-          #{index + 1}
-        </span>
-        <span className="text-xs font-mono text-violet-400 shrink-0">
-          {formatTime(segment.start_sec)} → {formatTime(segment.end_sec)}
-        </span>
-        <EnergyDots energy={segment.energy} />
-        <EmotionBadge emotion={segment.emotion} />
-        {segment.notes && (
-          <span className="text-xs text-slate-500 ml-auto truncate max-w-[200px]" title={segment.notes}>
-            {segment.notes}
+      <div className="px-4 py-2.5 bg-surface-700 border-b border-surface-600">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-mono text-slate-500 bg-surface-900 px-2 py-0.5 rounded shrink-0">
+            #{index + 1}
           </span>
-        )}
+          <span className="text-xs font-mono text-violet-400 shrink-0">
+            {formatTime(segment.start_sec)} → {formatTime(segment.end_sec)}
+          </span>
+          <EnergyDots energy={segment.energy} />
+          <EmotionBadge emotion={segment.emotion} />
+          {instruments.length > 0 && (
+            <div className="ml-auto flex flex-wrap gap-1 justify-end">
+              {instruments.map((inst) => (
+                <span key={inst} className="text-xs text-slate-400 bg-surface-600 border border-surface-500 px-2 py-0.5 rounded-full">
+                  {inst}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 가사 */}
       <div className="p-4 space-y-3">
+        {segment.notes && (
+          <p className="text-xs text-slate-500 leading-relaxed">{segment.notes}</p>
+        )}
         <div>
           <label className="text-xs text-slate-500 font-medium block mb-1">한국어</label>
           <textarea
