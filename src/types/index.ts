@@ -8,6 +8,7 @@ export interface Segment {
   energy: 'low' | 'medium' | 'high' | ''
   vocal_gender: '남성' | '여성' | '혼성' | ''
   notes: string
+  instruments: string[]
   isTranslating: boolean
 }
 

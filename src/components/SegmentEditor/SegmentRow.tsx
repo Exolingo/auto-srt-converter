@@ -1,12 +1,19 @@
+import { useRef } from 'react'
 import { Segment } from '../../types'
 
 interface Props {
   segment: Segment
   index: number
-  instruments: string[]
+  globalInstruments: string[]
+  isDragging: boolean
+  isDropTarget: boolean
   onKoreanChange: (id: number, value: string) => void
   onEnglishChange: (id: number, value: string) => void
   onRetranslate: (id: number, koreanText: string) => void
+  onDragHandleDown: (id: number, e: React.PointerEvent<HTMLElement>) => void
+  onPointerEnterCard: (id: number) => void
+  onPointerLeaveCard: (id: number) => void
+  onSplit: (id: number, cursorPos: number) => void
 }
 
 function formatTime(seconds: number): string {
@@ -50,12 +57,32 @@ function EnergyDots({ energy }: { energy: Segment['energy'] }) {
   )
 }
 
-export function SegmentRow({ segment, index, instruments, onKoreanChange, onEnglishChange, onRetranslate }: Props) {
+export function SegmentRow({
+  segment, index, globalInstruments, isDragging, isDropTarget,
+  onKoreanChange, onEnglishChange, onRetranslate,
+  onDragHandleDown, onPointerEnterCard, onPointerLeaveCard, onSplit,
+}: Props) {
+  const koreanCursorRef = useRef(0)
+
   return (
-    <div id={`segment-${segment.id}`} className="bg-surface-800 rounded-xl border border-surface-600 overflow-hidden">
+    <div
+      id={`segment-${segment.id}`}
+      onPointerEnter={() => onPointerEnterCard(segment.id)}
+      onPointerLeave={() => onPointerLeaveCard(segment.id)}
+      className={`bg-surface-800 rounded-xl border overflow-hidden transition-all duration-150
+        ${isDragging ? 'opacity-30 scale-[0.98]' : ''}
+        ${isDropTarget ? 'border-violet-400 ring-2 ring-violet-400/40 scale-[1.01]' : 'border-surface-600'}`}
+    >
       {/* 헤더 */}
       <div className="px-4 py-2.5 bg-surface-700 border-b border-surface-600">
         <div className="flex items-center gap-2 flex-wrap">
+          <span
+            onPointerDown={(e) => { e.preventDefault(); onDragHandleDown(segment.id, e) }}
+            className="cursor-grab active:cursor-grabbing text-slate-600 hover:text-slate-400 select-none text-base leading-none shrink-0 touch-none"
+            title="드래그하여 다른 세그먼트와 합치기"
+          >
+            ⠿
+          </span>
           <span className="text-xs font-mono text-slate-500 bg-surface-900 px-2 py-0.5 rounded shrink-0">
             #{index + 1}
           </span>
@@ -63,15 +90,25 @@ export function SegmentRow({ segment, index, instruments, onKoreanChange, onEngl
             {formatTime(segment.start_sec)} → {formatTime(segment.end_sec)}
           </span>
           <EnergyDots energy={segment.energy} />
-          {instruments.length > 0 && (
-            <div className="ml-auto flex flex-wrap gap-1 justify-end">
-              {instruments.map((inst) => (
-                <span key={inst} className="text-xs text-slate-400 bg-surface-600 border border-surface-500 px-2 py-0.5 rounded-full">
-                  {inst}
-                </span>
-              ))}
-            </div>
-          )}
+          <button
+            onClick={() => onSplit(segment.id, koreanCursorRef.current)}
+            title="한국어 커서 위치에서 분리"
+            className="text-slate-600 hover:text-amber-400 transition-colors text-sm leading-none shrink-0"
+          >
+            ✂
+          </button>
+          {(() => {
+            const displayInstruments = segment.instruments.length > 0 ? segment.instruments : globalInstruments
+            return displayInstruments.length > 0 ? (
+              <div className="ml-auto flex flex-wrap gap-1 justify-end">
+                {displayInstruments.map((inst) => (
+                  <span key={inst} className="text-xs text-slate-400 bg-surface-600 border border-surface-500 px-2 py-0.5 rounded-full">
+                    {inst}
+                  </span>
+                ))}
+              </div>
+            ) : null
+          })()}
         </div>
       </div>
 
@@ -86,10 +123,14 @@ export function SegmentRow({ segment, index, instruments, onKoreanChange, onEngl
           </div>
         )}
         <div>
-          <label className="text-xs text-slate-500 font-medium block mb-1">한국어</label>
+          <label className="text-xs text-slate-500 font-medium block mb-1">
+            한국어 <span className="text-slate-600 font-normal">— 커서 위치에서 ✂ 클릭 시 분리</span>
+          </label>
           <textarea
             value={segment.korean}
             onChange={(e) => onKoreanChange(segment.id, e.target.value)}
+            onSelect={(e) => { koreanCursorRef.current = e.currentTarget.selectionStart }}
+            onBlur={(e) => { koreanCursorRef.current = e.currentTarget.selectionStart }}
             rows={2}
             className="w-full bg-surface-700 border border-surface-600 rounded-lg px-3 py-2 text-white text-sm resize-none focus:outline-none focus:ring-1 focus:ring-violet-500"
           />

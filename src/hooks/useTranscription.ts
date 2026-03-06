@@ -37,6 +37,45 @@ export function useTranscription() {
     setSegments((prev) => prev.map((s) => (s.id === id ? { ...s, isTranslating } : s)))
   }
 
+  const splitSegment = (
+    segmentId: number,
+    korFirst: string, korSecond: string,
+    engFirst: string, engSecond: string,
+    splitTime: number,
+  ) => {
+    setSegments((prev) => {
+      const index = prev.findIndex((s) => s.id === segmentId)
+      if (index === -1) return prev
+      const original = prev[index]
+      const newId = Math.max(...prev.map((s) => s.id)) + 1
+      const first: Segment = { ...original, end_sec: splitTime, korean: korFirst, english: engFirst, isTranslating: false }
+      const second: Segment = { ...original, id: newId, start_sec: splitTime, korean: korSecond, english: engSecond, isTranslating: false }
+      return [...prev.slice(0, index), first, second, ...prev.slice(index + 1)]
+    })
+  }
+
+  const mergeSegments = (targetId: number, sourceId: number) => {
+    setSegments((prev) => {
+      const target = prev.find((s) => s.id === targetId)
+      const source = prev.find((s) => s.id === sourceId)
+      if (!target || !source) return prev
+
+      const [first, second] =
+        target.start_sec <= source.start_sec ? [target, source] : [source, target]
+
+      const merged: Segment = {
+        ...first,
+        end_sec: second.end_sec,
+        korean: first.korean + ' ' + second.korean,
+        english: first.english + ' ' + second.english,
+        instruments: [...new Set([...first.instruments, ...second.instruments])],
+        isTranslating: false,
+      }
+
+      return prev.filter((s) => s.id !== second.id).map((s) => (s.id === first.id ? merged : s))
+    })
+  }
+
   const reset = () => {
     setSegments([])
     setSongOverview(null)
@@ -56,6 +95,8 @@ export function useTranscription() {
     updateKorean,
     updateEnglish,
     setSegmentTranslating,
+    splitSegment,
+    mergeSegments,
     reset,
   }
 }

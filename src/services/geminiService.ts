@@ -24,6 +24,7 @@ export interface GeminiAnalysisResult {
     energy: 'low' | 'medium' | 'high'
     vocal_gender: '남성' | '여성' | '혼성'
     notes: string
+    instruments: string[]
   }>
 }
 
@@ -104,8 +105,8 @@ ${whisperList}
 1. 가사 제공 시 → 해당 가사를 각 타임스탬프 구간에 매핑 (허밍/간주 구간 제외)
 2. 각 구간의 한국어 가사를 자연스럽고 시적인 영어로 번역
 3. 전체 곡 분위기/감정 분석
-4. 음악 분석: tempo(느림/보통/빠름), 장르 힌트, 사용 악기 목록, 보컬 스타일
-5. 구간별: 감정 키워드, 에너지(low/medium/high), 보컬 성별(남성/여성/혼성), 보컬 특징 한 문장
+4. 음악 분석: tempo(느림/보통/빠름), 장르 힌트, 전체적으로 등장하는 악기 목록, 보컬 스타일
+5. 구간별: 감정 키워드, 에너지(low/medium/high), 보컬 성별(남성/여성/혼성), 보컬 특징 한 문장, 해당 구간에서 두드러지는 악기 목록(전체와 다를 경우만 채우고, 차이 없으면 빈 배열)
 
 반드시 아래 JSON 형식으로만 응답하세요. 마크다운 없이.
 {
@@ -132,7 +133,8 @@ ${whisperList}
       "emotion": "감정",
       "energy": "low|medium|high",
       "vocal_gender": "남성|여성|혼성",
-      "notes": "이 구간의 보컬 특징 한 문장 (예: 허스키하게 속삭이듯, 높은 음역대 절규 등)"
+      "notes": "이 구간의 보컬 특징 한 문장 (예: 허스키하게 속삭이듯, 높은 음역대 절규 등)",
+      "instruments": ["이 구간에서만 두드러지는 악기, 없으면 빈 배열"]
     }
   ]
 }`
@@ -159,6 +161,7 @@ export function mapToSegments(result: GeminiAnalysisResult): Segment[] {
     energy: s.energy,
     vocal_gender: s.vocal_gender ?? '',
     notes: s.notes,
+    instruments: s.instruments ?? [],
     isTranslating: false,
   }))
 }
