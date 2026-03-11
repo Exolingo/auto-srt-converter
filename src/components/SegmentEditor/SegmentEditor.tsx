@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { Segment, SongOverviewData } from '../../types'
 import { SegmentRow } from './SegmentRow'
 import { MergePreviewRow } from './MergePreviewRow'
 import { DragGhost } from './DragGhost'
 import { SplitPreviewRow } from './SplitPreviewRow'
+import { DeletePreviewRow } from './DeletePreviewRow'
 import { SegmentNav } from './SegmentNav'
 import { SongOverview } from '../SongOverview'
 import { downloadSrtFile } from '../../utils/srtGenerator'
@@ -19,6 +21,7 @@ interface Props {
   onRetranslate: (id: number, koreanText: string) => void
   onMergeSegments: (targetId: number, sourceId: number) => void
   onSplitSegment: (segmentId: number, korFirst: string, korSecond: string, engFirst: string, engSecond: string, splitTime: number) => void
+  onDeleteSegment: (id: number) => void
   onReset: () => void
 }
 
@@ -36,6 +39,7 @@ export function SegmentEditor({
   onRetranslate,
   onMergeSegments,
   onSplitSegment,
+  onDeleteSegment,
   onReset,
 }: Props) {
   const { draggingId, dragPos, dragOffset, dragWidth, dragOverId, pendingMerge, startDrag, enterDropZone, leaveDropZone, cancelMerge } =
@@ -64,6 +68,13 @@ export function SegmentEditor({
   const handleSplit = (id: number, cursorPos: number) => {
     const segment = segments.find((s) => s.id === id)
     if (segment) triggerSplit(segment, cursorPos)
+  }
+
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null)
+
+  const handleConfirmDelete = () => {
+    onDeleteSegment(pendingDeleteId!)
+    setPendingDeleteId(null)
   }
 
   let visibleIndex = 0
@@ -116,6 +127,18 @@ export function SegmentEditor({
             return null
           }
 
+          if (pendingDeleteId === segment.id) {
+            return (
+              <DeletePreviewRow
+                key="delete-preview"
+                segment={segment}
+                index={visibleIndex++}
+                onConfirm={handleConfirmDelete}
+                onCancel={() => setPendingDeleteId(null)}
+              />
+            )
+          }
+
           if (pendingSplit?.segmentId === segment.id) {
             visibleIndex++
             return (
@@ -145,6 +168,7 @@ export function SegmentEditor({
               onPointerEnterCard={enterDropZone}
               onPointerLeaveCard={leaveDropZone}
               onSplit={handleSplit}
+              onDeleteRequest={setPendingDeleteId}
             />
           )
         })}

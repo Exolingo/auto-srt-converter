@@ -1,5 +1,5 @@
-import { WhisperSegment } from './whisperService'
-import { Segment, SongOverviewData } from '../types'
+import { WhisperSegment, WhisperWord } from './whisperService'
+import { Segment, SegmentWord, SongOverviewData } from '../types'
 
 const GEMINI_MODEL = 'gemini-2.5-flash'
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
@@ -9,6 +9,7 @@ export interface GeminiAnalysisResult {
   duration: string
   overall_emotion: string
   overall_mood: string
+  lyrics_summary: string
   music_analysis: {
     tempo: string
     genre_hint: string
@@ -102,9 +103,9 @@ ${lyricsSection}
 ${whisperList}
 
 [분석 요구사항]
-1. 가사 제공 시 → 해당 가사를 각 타임스탬프 구간에 매핑 (허밍/간주 구간 제외)
-2. 각 구간의 한국어 가사를 자연스럽고 시적인 영어로 번역
-3. 전체 곡 분위기/감정 분석
+1. 가사 제공 시 → 해당 가사를 각 타임스탬프 구간에 매핑 (허밍/간주 구간 제외) — 각 가사 라인은 반드시 한 번만 사용하고 절대 중복 배치 금지
+2. 각 구간의 한국어 가사를 영어 노래 가사처럼 번역 — 구어체·감성적 표현 사용, 직역 금지, 영어 단어 수가 한국어 어절 수와 비슷하도록 유지
+3. 전체 곡 분위기/감정 분석 + 가사 전체가 담고 있는 의미·주제 요약 (2~3문장, 한국어)
 4. 음악 분석: tempo(느림/보통/빠름), 장르 힌트, 전체적으로 등장하는 악기 목록, 보컬 스타일
 5. 구간별: 감정 키워드, 에너지(low/medium/high), 보컬 성별(남성/여성/혼성), 보컬 특징 한 문장, 해당 구간에서 두드러지는 악기 목록(전체와 다를 경우만 채우고, 차이 없으면 빈 배열)
 
@@ -116,6 +117,7 @@ ${whisperList}
   "duration": "MM:SS",
   "overall_emotion": "전체 감정 키워드",
   "overall_mood": "전체 분위기 한 문장",
+  "lyrics_summary": "가사 전체의 의미와 주제를 2~3문장으로 요약 (한국어)",
   "music_analysis": {
     "tempo": "느림|보통|빠름",
     "genre_hint": "장르",
@@ -150,7 +152,7 @@ ${whisperList}
 /**
  * Gemini 분석 결과 → 앱 내부 타입 변환
  */
-export function mapToSegments(result: GeminiAnalysisResult): Segment[] {
+export function mapToSegments(result: GeminiAnalysisResult, allWords: WhisperWord[]): Segment[] {
   return result.segments.map((s, i) => ({
     id: i,
     start_sec: s.start_sec,
@@ -162,6 +164,7 @@ export function mapToSegments(result: GeminiAnalysisResult): Segment[] {
     vocal_gender: s.vocal_gender ?? '',
     notes: s.notes,
     instruments: s.instruments ?? [],
+    words: allWords.filter((w): w is SegmentWord => w.start >= s.start_sec && w.start < s.end_sec),
     isTranslating: false,
   }))
 }
@@ -172,8 +175,47 @@ export function mapToSongOverview(result: GeminiAnalysisResult): SongOverviewDat
     duration_sec: result.duration_sec,
     overall_emotion: result.overall_emotion,
     overall_mood: result.overall_mood,
+    lyrics_summary: result.lyrics_summary ?? '',
     music_analysis: result.music_analysis,
   }
+}
+
+/**
+ * 분리된 두 구간을 함께 번역 — 각각 자연스럽고, 합쳤을 때도 자연스러운 영어 가사 생성
+ */
+export async function translateSplitPair(
+  korFirst: string,
+  korSecond: string,
+  context: { prev?: string; next?: string } = {}
+): Promise<[string, string]> {
+  const contextLines = [
+    context.prev ? `앞 문맥 (번역 불필요): "${context.prev}"` : '',
+    `첫 번째 구간: "${korFirst}"`,
+    `두 번째 구간: "${korSecond}"`,
+    context.next ? `뒤 문맥 (번역 불필요): "${context.next}"` : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  const prompt = `당신은 K-pop 뮤직비디오 가사를 영어로 번역하는 전문가입니다.
+한국어 가사 두 구간을 영어로 번역하세요.
+
+규칙:
+- 두 구간을 이어 읽었을 때 원어민이 들어도 자연스러운 하나의 영어 가사가 되어야 함
+- 구간별로 끊어지는 지점의 영어 단어 순서도 한국어 구간 분할에 맞게 구성할 것
+  예) 한: "나는 어젯밤에 / 사과를 보았다" → 영: "Last night / I saw an apple" (O)
+      "I saw an apple / last night" (X — 한국어 구분과 어순이 반대)
+- 각 구간의 영어 단어 수는 한국어 어절 수와 비슷하게 유지
+- 구어체·감성적 표현, 직역 금지
+- 아래 JSON 형식으로만 반환, 설명·마크다운 금지
+
+${contextLines}
+
+{"first": "첫 번째 구간 영어", "second": "두 번째 구간 영어"}`
+
+  const raw = await callGemini([{ text: prompt }])
+  const parsed = parseJson<{ first: string; second: string }>(raw)
+  return [parsed.first.trim(), parsed.second.trim()]
 }
 
 /**
@@ -191,9 +233,13 @@ export async function translateSingle(
     .filter(Boolean)
     .join('\n')
 
-  const prompt = `당신은 한국어 K-pop/뮤직비디오 가사를 영어로 번역하는 전문가입니다.
-앞뒤 흐름이 자연스럽게 이어지도록 "번역할 구간"만 영어로 번역해주세요.
-번역된 영어 가사만 반환하고, 다른 설명이나 마크다운은 포함하지 마세요.
+  const prompt = `당신은 K-pop 뮤직비디오 가사를 영어로 번역하는 전문가입니다.
+아래 규칙을 반드시 지키세요:
+- 실제 노래에 들어갈 가사처럼 구어체·감성적으로 번역
+- 직역 금지 — 뉘앙스와 감정을 살릴 것
+- 영어 단어 수가 한국어 어절 수와 비슷하도록 유지 (너무 길어지면 안 됨)
+- 앞뒤 흐름이 자연스럽게 이어지도록 "번역할 구간"만 번역
+- 번역된 영어 가사만 반환, 설명·마크다운 금지
 
 ${contextLines}`
 

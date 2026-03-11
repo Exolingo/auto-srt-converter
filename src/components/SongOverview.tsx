@@ -35,9 +35,11 @@ export function SongOverview({ overview }: Props) {
         </div>
       </div>
 
-      <p className="text-slate-300 text-sm leading-relaxed border-l-2 border-violet-500/50 pl-3">
-        {overview.overall_mood}
-      </p>
+      {overview.lyrics_summary && (
+        <p className="text-slate-300 text-sm leading-relaxed border-l-2 border-violet-500/50 pl-3 italic">
+          {overview.lyrics_summary}
+        </p>
+      )}
 
       {/* 음악 분석 태그 */}
       <div className="space-y-2">

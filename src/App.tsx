@@ -21,6 +21,7 @@ export default function App() {
     updateKorean,
     updateEnglish,
     setSegmentTranslating,
+    deleteSegment,
     splitSegment,
     mergeSegments,
     reset,
@@ -99,6 +100,7 @@ export default function App() {
             onRetranslate={retranslateSegment}
             onMergeSegments={mergeSegments}
             onSplitSegment={splitSegment}
+            onDeleteSegment={deleteSegment}
             onReset={handleReset}
           />
         ) : null}

@@ -14,6 +14,7 @@ interface Props {
   onPointerEnterCard: (id: number) => void
   onPointerLeaveCard: (id: number) => void
   onSplit: (id: number, cursorPos: number) => void
+  onDeleteRequest: (id: number) => void
 }
 
 function formatTime(seconds: number): string {
@@ -60,7 +61,7 @@ function EnergyDots({ energy }: { energy: Segment['energy'] }) {
 export function SegmentRow({
   segment, index, globalInstruments, isDragging, isDropTarget,
   onKoreanChange, onEnglishChange, onRetranslate,
-  onDragHandleDown, onPointerEnterCard, onPointerLeaveCard, onSplit,
+  onDragHandleDown, onPointerEnterCard, onPointerLeaveCard, onSplit, onDeleteRequest,
 }: Props) {
   const koreanCursorRef = useRef(0)
 
@@ -83,13 +84,6 @@ export function SegmentRow({
           >
             ⠿
           </span>
-          <span className="text-xs font-mono text-slate-500 bg-surface-900 px-2 py-0.5 rounded shrink-0">
-            #{index + 1}
-          </span>
-          <span className="text-xs font-mono text-violet-400 shrink-0">
-            {formatTime(segment.start_sec)} → {formatTime(segment.end_sec)}
-          </span>
-          <EnergyDots energy={segment.energy} />
           <button
             onClick={() => onSplit(segment.id, koreanCursorRef.current)}
             title="한국어 커서 위치에서 분리"
@@ -97,6 +91,25 @@ export function SegmentRow({
           >
             ✂
           </button>
+          <button
+            onClick={() => onDeleteRequest(segment.id)}
+            title="세그먼트 삭제"
+            className="text-slate-600 hover:text-red-400 transition-colors shrink-0"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14H6L5 6" />
+              <path d="M10 11v6M14 11v6" />
+              <path d="M9 6V4h6v2" />
+            </svg>
+          </button>
+          <span className="text-xs font-mono text-slate-500 bg-surface-900 px-2 py-0.5 rounded shrink-0">
+            #{index + 1}
+          </span>
+          <span className="text-xs font-mono text-violet-400 shrink-0">
+            {formatTime(segment.start_sec)} → {formatTime(segment.end_sec)}
+          </span>
+          <EnergyDots energy={segment.energy} />
           {(() => {
             const displayInstruments = segment.instruments.length > 0 ? segment.instruments : globalInstruments
             return displayInstruments.length > 0 ? (

@@ -1,3 +1,9 @@
+export interface SegmentWord {
+  word: string
+  start: number
+  end: number
+}
+
 export interface Segment {
   id: number
   start_sec: number
@@ -9,6 +15,7 @@ export interface Segment {
   vocal_gender: '남성' | '여성' | '혼성' | ''
   notes: string
   instruments: string[]
+  words: SegmentWord[]
   isTranslating: boolean
 }
 
@@ -24,5 +31,6 @@ export interface SongOverviewData {
   duration_sec: number
   overall_emotion: string
   overall_mood: string
+  lyrics_summary: string
   music_analysis: SongMusicAnalysis
 }

@@ -48,7 +48,8 @@ export function useTranslation({
         userLyrics || undefined
       )
 
-      setResults(mapToSegments(result), mapToSongOverview(result))
+      const allWords = whisperSegments.flatMap((s) => s.words)
+      setResults(mapToSegments(result, allWords), mapToSongOverview(result))
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : '분석에 실패했습니다.'
       setError(message)

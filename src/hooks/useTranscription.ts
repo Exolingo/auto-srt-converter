@@ -37,6 +37,10 @@ export function useTranscription() {
     setSegments((prev) => prev.map((s) => (s.id === id ? { ...s, isTranslating } : s)))
   }
 
+  const deleteSegment = (id: number) => {
+    setSegments((prev) => prev.filter((s) => s.id !== id))
+  }
+
   const splitSegment = (
     segmentId: number,
     korFirst: string, korSecond: string,
@@ -48,8 +52,8 @@ export function useTranscription() {
       if (index === -1) return prev
       const original = prev[index]
       const newId = Math.max(...prev.map((s) => s.id)) + 1
-      const first: Segment = { ...original, end_sec: splitTime, korean: korFirst, english: engFirst, isTranslating: false }
-      const second: Segment = { ...original, id: newId, start_sec: splitTime, korean: korSecond, english: engSecond, isTranslating: false }
+      const first: Segment = { ...original, end_sec: splitTime, korean: korFirst, english: engFirst, words: original.words.filter((w) => w.start < splitTime), isTranslating: false }
+      const second: Segment = { ...original, id: newId, start_sec: splitTime, korean: korSecond, english: engSecond, words: original.words.filter((w) => w.start >= splitTime), isTranslating: false }
       return [...prev.slice(0, index), first, second, ...prev.slice(index + 1)]
     })
   }
@@ -69,6 +73,7 @@ export function useTranscription() {
         korean: first.korean + ' ' + second.korean,
         english: first.english + ' ' + second.english,
         instruments: [...new Set([...first.instruments, ...second.instruments])],
+        words: [...first.words, ...second.words],
         isTranslating: false,
       }
 
@@ -95,6 +100,7 @@ export function useTranscription() {
     updateKorean,
     updateEnglish,
     setSegmentTranslating,
+    deleteSegment,
     splitSegment,
     mergeSegments,
     reset,
