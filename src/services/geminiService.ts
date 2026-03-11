@@ -41,7 +41,7 @@ async function callGemini(parts: object[]): Promise<string> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts }],
-      generationConfig: { temperature: 0.3 },
+      generationConfig: { temperature: 0.7 },
     }),
   })
   if (!response.ok) {
@@ -71,6 +71,39 @@ function formatTime(seconds: number): string {
   const s = Math.floor(seconds % 60)
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
+
+const LYRIC_TRANSLATION_RULES = `[영어 가사 번역 규칙 — 반드시 준수]
+목표: 빌보드 팝/R&B 차트에 실제로 올라올 법한 영어 가사 스타일
+
+⚠️ 길이 제한 (가장 중요):
+- 한 구간은 반드시 8단어 이하로 작성
+- 한국어 어절 수를 넘지 말 것 — 의역으로 압축하되 의미는 보존
+- 절대 두 문장으로 늘리지 말 것. 하나의 짧은 구절로 마무리
+
+✅ 해야 할 것:
+- 짧고 직관적인 구어체 표현 (you never knew / my heart broke / I'm falling apart)
+- 단순 과거·현재형 위주 (broke, fall, know, feels)
+- 축약형 자연스럽게 사용 (didn't, I'd, you're, can't)
+- 반복·라임이 가능하면 살릴 것
+
+❌ 절대 쓰면 안 되는 것:
+- ultimately, furthermore, nevertheless, hence, thus, moreover 같은 격식·학술 어휘
+- had worn away, had become, had faded 같은 과거완료 남발
+- how much / how deeply / how greatly 같이 설명을 늘리는 관계절
+- 논문·번역투 느낌이 나는 표현
+
+예시:
+한: "내 마음이 얼마나 닳았는지 넌 끝내 몰랐어" (6어절)
+❌ You ultimately never knew how much my heart had worn away. (12단어)
+✅ You never knew how broken I'd become. (7단어)
+
+한: "그 밤이 지나도 넌 내 곁에 없었어" (7어절)
+❌ Even after that night had passed, you were not present by my side. (13단어)
+✅ Even after that night, you were gone. (7단어)
+
+한: "너를 사랑했던 것 같아" (4어절)
+❌ I think that I was in love with you all along. (11단어)
+✅ I think I loved you. (5단어)`
 
 /**
  * 오디오를 직접 들으면서 종합 분석 수행
@@ -102,9 +135,11 @@ ${lyricsSection}
 [Whisper 타임스탬프 참고]
 ${whisperList}
 
+${LYRIC_TRANSLATION_RULES}
+
 [분석 요구사항]
 1. 가사 제공 시 → 해당 가사를 각 타임스탬프 구간에 매핑 (허밍/간주 구간 제외) — 각 가사 라인은 반드시 한 번만 사용하고 절대 중복 배치 금지
-2. 각 구간의 한국어 가사를 영어 노래 가사처럼 번역 — 구어체·감성적 표현 사용, 직역 금지, 영어 단어 수가 한국어 어절 수와 비슷하도록 유지
+2. 각 구간의 한국어 가사를 위 규칙에 따라 영어 노래 가사로 번역
 3. 전체 곡 분위기/감정 분석 + 가사 전체가 담고 있는 의미·주제 요약 (2~3문장, 한국어)
 4. 음악 분석: tempo(느림/보통/빠름), 장르 힌트, 전체적으로 등장하는 악기 목록, 보컬 스타일
 5. 구간별: 감정 키워드, 에너지(low/medium/high), 보컬 성별(남성/여성/혼성), 보컬 특징 한 문장, 해당 구간에서 두드러지는 악기 목록(전체와 다를 경우만 채우고, 차이 없으면 빈 배열)
@@ -200,13 +235,13 @@ export async function translateSplitPair(
   const prompt = `당신은 K-pop 뮤직비디오 가사를 영어로 번역하는 전문가입니다.
 한국어 가사 두 구간을 영어로 번역하세요.
 
-규칙:
-- 두 구간을 이어 읽었을 때 원어민이 들어도 자연스러운 하나의 영어 가사가 되어야 함
-- 구간별로 끊어지는 지점의 영어 단어 순서도 한국어 구간 분할에 맞게 구성할 것
+${LYRIC_TRANSLATION_RULES}
+
+[분리 구간 추가 규칙]
+- 두 구간을 이어 읽었을 때 하나의 자연스러운 영어 가사가 되어야 함
+- 한국어 구간 분할 지점과 영어 어순을 맞출 것
   예) 한: "나는 어젯밤에 / 사과를 보았다" → 영: "Last night / I saw an apple" (O)
-      "I saw an apple / last night" (X — 한국어 구분과 어순이 반대)
-- 각 구간의 영어 단어 수는 한국어 어절 수와 비슷하게 유지
-- 구어체·감성적 표현, 직역 금지
+      "I saw an apple / last night" (X — 분할 지점이 어순과 반대)
 - 아래 JSON 형식으로만 반환, 설명·마크다운 금지
 
 ${contextLines}
@@ -234,12 +269,11 @@ export async function translateSingle(
     .join('\n')
 
   const prompt = `당신은 K-pop 뮤직비디오 가사를 영어로 번역하는 전문가입니다.
-아래 규칙을 반드시 지키세요:
-- 실제 노래에 들어갈 가사처럼 구어체·감성적으로 번역
-- 직역 금지 — 뉘앙스와 감정을 살릴 것
-- 영어 단어 수가 한국어 어절 수와 비슷하도록 유지 (너무 길어지면 안 됨)
-- 앞뒤 흐름이 자연스럽게 이어지도록 "번역할 구간"만 번역
-- 번역된 영어 가사만 반환, 설명·마크다운 금지
+
+${LYRIC_TRANSLATION_RULES}
+
+앞뒤 흐름이 자연스럽게 이어지도록 "번역할 구간"만 번역하세요.
+번역된 영어 가사만 반환, 설명·마크다운 금지.
 
 ${contextLines}`
 
