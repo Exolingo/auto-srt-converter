@@ -20,7 +20,7 @@ interface Props {
   onEnglishChange: (id: number, value: string) => void
   onRetranslate: (id: number, koreanText: string) => void
   onMergeSegments: (targetId: number, sourceId: number) => void
-  onSplitSegment: (segmentId: number, korFirst: string, korSecond: string, engFirst: string, engSecond: string, splitTime: number) => number
+  onSplitSegment: (segmentId: number, korFirst: string, korSecond: string, engFirst: string, engSecond: string, splitTime: number, markTranslating?: boolean) => number
   onDeleteSegment: (id: number) => void
   onReset: () => void
 }
@@ -63,7 +63,7 @@ export function SegmentEditor({
     const s = pendingSplit!
     if (s.isTranslating) {
       // 번역 중: 한국어만 즉시 split하고 영어는 번역 완료 후 자동 업데이트
-      const newId = onSplitSegment(s.segmentId, s.korFirst, s.korSecond, '', '', s.splitTime)
+      const newId = onSplitSegment(s.segmentId, s.korFirst, s.korSecond, '', '', s.splitTime, true)
       registerPostConfirm(s.segmentId, s.segmentId, newId)
     } else {
       onSplitSegment(s.segmentId, s.korFirst, s.korSecond, s.engFirst, s.engSecond, s.splitTime)
