@@ -20,7 +20,7 @@ interface Props {
   onEnglishChange: (id: number, value: string) => void
   onRetranslate: (id: number, koreanText: string) => void
   onMergeSegments: (targetId: number, sourceId: number) => void
-  onSplitSegment: (segmentId: number, korFirst: string, korSecond: string, engFirst: string, engSecond: string, splitTime: number) => void
+  onSplitSegment: (segmentId: number, korFirst: string, korSecond: string, engFirst: string, engSecond: string, splitTime: number) => number
   onDeleteSegment: (id: number) => void
   onReset: () => void
 }
@@ -47,7 +47,7 @@ export function SegmentEditor({
 
   const draggingSegment = draggingId !== null ? segments.find((s) => s.id === draggingId) : null
   const draggingIndex = draggingId !== null ? segments.findIndex((s) => s.id === draggingId) : -1
-  const { pendingSplit, triggerSplit, cancelSplit } = useSplitPreview()
+  const { pendingSplit, triggerSplit, registerPostConfirm, cancelSplit } = useSplitPreview(onEnglishChange)
 
   const mergeIds = pendingMerge ? new Set([pendingMerge.targetId, pendingMerge.sourceId]) : null
   const firstMergeId = pendingMerge
@@ -61,8 +61,14 @@ export function SegmentEditor({
 
   const handleConfirmSplit = () => {
     const s = pendingSplit!
-    onSplitSegment(s.segmentId, s.korFirst, s.korSecond, s.engFirst, s.engSecond, s.splitTime)
-    cancelSplit()
+    if (s.isTranslating) {
+      // 번역 중: 한국어만 즉시 split하고 영어는 번역 완료 후 자동 업데이트
+      const newId = onSplitSegment(s.segmentId, s.korFirst, s.korSecond, '', '', s.splitTime)
+      registerPostConfirm(s.segmentId, s.segmentId, newId)
+    } else {
+      onSplitSegment(s.segmentId, s.korFirst, s.korSecond, s.engFirst, s.engSecond, s.splitTime)
+      cancelSplit()
+    }
   }
 
   const handleSplit = (id: number, cursorPos: number) => {

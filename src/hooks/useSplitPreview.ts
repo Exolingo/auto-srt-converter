@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Segment, SegmentWord } from '../types'
 import { translateSplitPair } from '../services/geminiService'
 
@@ -10,6 +10,11 @@ export interface PendingSplit {
   engSecond: string
   splitTime: number
   isTranslating: boolean
+}
+
+interface PostConfirmInfo {
+  firstId: number
+  secondId: number
 }
 
 /**
@@ -30,11 +35,13 @@ function findSplitTime(words: SegmentWord[], ratio: number, start_sec: number, e
   return start_sec + (end_sec - start_sec) * ratio
 }
 
-export function useSplitPreview() {
+export function useSplitPreview(updateEnglish: (id: number, value: string) => void) {
   const [pendingSplit, setPendingSplit] = useState<PendingSplit | null>(null)
+  // 번역 완료 전에 confirm한 split들을 추적 (segmentId → {firstId, secondId})
+  const postConfirmMap = useRef<Map<number, PostConfirmInfo>>(new Map())
 
   const triggerSplit = async (segment: Segment, cursorPos: number) => {
-    const { korean, start_sec, end_sec, words } = segment
+    const { korean, start_sec, end_sec, words, id: segmentId } = segment
     if (cursorPos <= 0 || cursorPos >= korean.length) return
 
     const korFirst = korean.slice(0, cursorPos).trim()
@@ -45,19 +52,37 @@ export function useSplitPreview() {
     const splitTime = findSplitTime(words, ratio, start_sec, end_sec)
 
     // 미리보기 즉시 표시 (번역 로딩 상태)
-    setPendingSplit({ segmentId: segment.id, korFirst, korSecond, engFirst: '', engSecond: '', splitTime, isTranslating: true })
+    setPendingSplit({ segmentId, korFirst, korSecond, engFirst: '', engSecond: '', splitTime, isTranslating: true })
 
-    // 두 구간을 함께 번역 — 각각 자연스럽고 합쳤을 때도 자연스러운 영어 보장
     const [engFirst, engSecond] = await translateSplitPair(korFirst, korSecond)
 
+    // 번역 완료 전에 이미 confirm된 경우: 직접 영어 업데이트 후 종료
+    const confirmed = postConfirmMap.current.get(segmentId)
+    if (confirmed) {
+      updateEnglish(confirmed.firstId, engFirst)
+      updateEnglish(confirmed.secondId, engSecond)
+      postConfirmMap.current.delete(segmentId)
+      return
+    }
+
+    // 아직 미리보기 중: 번역 결과를 preview에 반영
     setPendingSplit((prev) =>
-      prev?.segmentId === segment.id
+      prev?.segmentId === segmentId
         ? { ...prev, engFirst, engSecond, isTranslating: false }
         : prev
     )
   }
 
+  /**
+   * 번역 진행 중에 사용자가 confirm한 경우:
+   * 즉시 split(영어 빈칸)이 실행된 후 호출되며, 번역 완료 시 자동으로 영어를 채운다.
+   */
+  const registerPostConfirm = (originalSegmentId: number, firstId: number, secondId: number) => {
+    postConfirmMap.current.set(originalSegmentId, { firstId, secondId })
+    setPendingSplit(null)
+  }
+
   const cancelSplit = () => setPendingSplit(null)
 
-  return { pendingSplit, triggerSplit, cancelSplit }
+  return { pendingSplit, triggerSplit, registerPostConfirm, cancelSplit }
 }

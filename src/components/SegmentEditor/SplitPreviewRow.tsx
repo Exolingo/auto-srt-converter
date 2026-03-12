@@ -52,9 +52,8 @@ export function SplitPreviewRow({ segment, split, onConfirm, onCancel }: Props) 
       <div className="flex flex-col gap-1 pt-3 shrink-0">
         <button
           onClick={onConfirm}
-          disabled={isTranslating}
           title="분리 확인"
-          className="w-6 h-6 flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 disabled:bg-surface-700 disabled:cursor-not-allowed text-white rounded text-xs font-bold transition-colors"
+          className="w-6 h-6 flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold transition-colors"
         >
           ✓
         </button>

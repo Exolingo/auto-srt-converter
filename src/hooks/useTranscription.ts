@@ -46,16 +46,17 @@ export function useTranscription() {
     korFirst: string, korSecond: string,
     engFirst: string, engSecond: string,
     splitTime: number,
-  ) => {
+  ): number => {
+    const newId = Math.max(0, ...segments.map((s) => s.id)) + 1
     setSegments((prev) => {
       const index = prev.findIndex((s) => s.id === segmentId)
       if (index === -1) return prev
       const original = prev[index]
-      const newId = Math.max(...prev.map((s) => s.id)) + 1
       const first: Segment = { ...original, end_sec: splitTime, korean: korFirst, english: engFirst, words: original.words.filter((w) => w.start < splitTime), isTranslating: false }
       const second: Segment = { ...original, id: newId, start_sec: splitTime, korean: korSecond, english: engSecond, words: original.words.filter((w) => w.start >= splitTime), isTranslating: false }
       return [...prev.slice(0, index), first, second, ...prev.slice(index + 1)]
     })
+    return newId
   }
 
   const mergeSegments = (targetId: number, sourceId: number) => {
