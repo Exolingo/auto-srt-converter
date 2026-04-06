@@ -31,6 +31,7 @@ export interface SongMusicAnalysis {
   time_signature?: string
   production?: string
   arrangement?: string
+  suno_description?: string
 }
 
 export interface SongOverviewData {

@@ -41,7 +41,7 @@ async function callGemini(parts: object[]): Promise<string> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts }],
-      generationConfig: { temperature: 0.7 },
+      generationConfig: { temperature: 0.2 },
     }),
   })
   if (!response.ok) {
@@ -126,10 +126,14 @@ export async function analyzeComprehensive(
     .map((s) => `[${formatTime(s.start)}~${formatTime(s.end)}] (${s.start.toFixed(2)}s~${s.end.toFixed(2)}s): ${s.text}`)
     .join('\n')
 
-  const lyricsSection = userLyrics?.trim()
+  const cleanedLyrics = userLyrics?.trim()
+    ? userLyrics.split('\n').map((l) => l.trim()).filter((l) => l && !/^\[.*\]$/.test(l)).join('\n')
+    : ''
+
+  const lyricsSection = cleanedLyrics
     ? `[사용자 제공 정확한 가사]
 가사가 없는 구간(허밍, 간주, 아웃트로 등)은 segments에 포함하지 마세요.
-${userLyrics.trim()}`
+${cleanedLyrics}`
     : '[가사 미제공: 오디오를 직접 들어 한국어 가사를 인식하세요]'
 
   const prompt = `당신은 한국어 뮤직비디오 전문 분석가입니다.
@@ -221,43 +225,87 @@ export function mapToSongOverview(result: GeminiAnalysisResult): SongOverviewDat
 }
 
 /**
- * 팝송 모드 — 오디오만 분석하여 Suno AI 수준의 상세 음악 분석 수행
- * 가사 번역은 하지 않고, 장르/BPM/키/악기/보컬/프로덕션만 반환
+ * 팝송 모드 — Gemini가 오디오를 직접 들으면서:
+ * 1. 영어/한국어 가사를 정확한 타임스탬프에 매핑
+ * 2. 상세 음악 분석 수행
+ * Whisper 없이 Gemini 단독으로 처리
  */
-export async function analyzePopSongAudio(
+export interface PopSongAnalysisResult {
+  overview: SongOverviewData
+  segments: Segment[]
+}
+
+export async function analyzePopSongComprehensive(
   base64Audio: string,
   mimeType: string,
-): Promise<SongOverviewData> {
-  const prompt = `You are a professional music analyst. Listen to the attached audio and provide a detailed Suno AI-level analysis.
+  englishLyrics: string,
+  koreanLyrics: string,
+  audioDuration: number,
+): Promise<PopSongAnalysisResult> {
+  const cleanEng = englishLyrics.split('\n').map((l) => l.trim()).filter((l) => l && !/^\[.*\]$/.test(l))
+  const cleanKor = koreanLyrics.split('\n').map((l) => l.trim()).filter((l) => l && !/^\[.*\]$/.test(l))
 
-[Required Analysis — be as specific as Suno AI]
-1. Genre with sub-genre influences (e.g., "K-Pop ballad with soft rock influences")
-2. Detailed arrangement: describe each instrument's role and tone (e.g., "fingerpicked acoustic guitar", "clean electric guitar with light chorus", "warm electric bass")
-3. Drum/percussion details (kit type, pattern, notable elements like crash cymbals)
-4. Vocal analysis: register, technique, transitions (e.g., "breathy chest voice to clear falsetto")
-5. Exact BPM estimate, time signature, likely key
-6. Production notes: reverb, mix balance, mastering style
-7. Overall emotion and mood (in Korean)
-8. Brief lyrics theme summary (in Korean, 2-3 sentences)
+  const numberedLyrics = cleanEng.map((eng, i) => {
+    const kor = cleanKor[i] ?? ''
+    return `${i + 1}. [EN] ${eng}\n   [KO] ${kor}`
+  }).join('\n')
 
-Respond ONLY in the following JSON format. No markdown.
+  const prompt = `당신은 팝송 뮤직비디오 전문 분석가입니다.
+첨부된 오디오를 직접 들으면서 아래 가사를 정확한 타임스탬프에 매핑하고, 상세 음악 분석을 수행하세요.
+
+[가사 — 영어 원문 + 한국어 번역]
+${numberedLyrics}
+
+[중요: 오디오 정보]
+이 곡의 실제 총 길이는 정확히 ${audioDuration.toFixed(1)}초입니다. 모든 타임스탬프는 이 범위 내에 있어야 합니다.
+
+[타임스탬프 매핑 규칙 — 반드시 준수]
+1. 오디오를 직접 들으면서 각 가사 줄이 실제로 불리는 시작/끝 시간을 초 단위로 기록
+2. 가사가 없는 구간(간주, 아웃트로, 허밍)은 segments에 포함하지 마세요
+3. 각 가사 줄은 반드시 한 번만 사용하고, 순서대로 매핑
+4. 마지막 세그먼트의 end_sec는 ${audioDuration.toFixed(1)}초를 넘지 않아야 함
+5. segments 배열의 길이는 반드시 가사 줄 수(${cleanEng.length}개)와 동일해야 함
+
+[음악 분석 항목]
+1. 장르 + 서브장르 영향
+2. 편곡: 각 악기의 역할, 톤, 주법을 구체적으로 묘사
+3. 드럼/퍼커션: 킷 종류, 비트 패턴, 특징적 요소
+4. 보컬: 성별, 음역대, 발성 테크닉, 구간별 변화
+5. BPM, 박자, 키
+6. 프로덕션: 이펙트(리버브, 딜레이 등), 믹스 밸런스
+
+반드시 아래 JSON 형식으로만 응답하세요. 마크다운 없이.
 {
-  "duration_sec": number,
+  "duration_sec": 숫자,
   "duration": "MM:SS",
-  "overall_emotion": "전체 감정 키워드 (한국어)",
-  "overall_mood": "전체 분위기 한 문장 (한국어)",
-  "lyrics_summary": "가사의 의미와 주제 요약 2~3문장 (한국어)",
+  "overall_emotion": "감정 키워드 (한국어)",
+  "overall_mood": "분위기 한 문장 (한국어)",
+  "lyrics_summary": "가사 주제 요약 2~3문장 (한국어)",
   "music_analysis": {
     "tempo": "느림|보통|빠름",
-    "bpm": "72 BPM",
-    "key": "E Major",
-    "time_signature": "4/4",
-    "genre_hint": "K-Pop ballad with soft rock influences",
-    "instruments": ["Fingerpicked Acoustic Guitar", "Clean Electric Guitar", "Warm Electric Bass", "Standard Drum Kit"],
-    "vocal_style": "Emotive male vocals transitioning between breathy chest voice and clear falsetto",
-    "arrangement": "The arrangement features a fingerpicked acoustic guitar providing the harmonic foundation, a clean electric guitar with light chorus for textural layers, and a warm electric bass. A standard drum kit enters with a steady backbeat and prominent crash cymbals during the chorus.",
-    "production": "Polished production with moderate reverb on the vocals and a balanced mix that emphasizes the acoustic guitar's resonance"
-  }
+    "bpm": "BPM 수치",
+    "key": "키",
+    "time_signature": "박자",
+    "genre_hint": "장르",
+    "instruments": ["악기 목록"],
+    "vocal_style": "보컬 특징",
+    "arrangement": "편곡 상세",
+    "production": "프로덕션 특징",
+    "suno_description": "쉼표로 연결된 연속 설명문"
+  },
+  "segments": [
+    {
+      "start_sec": 숫자,
+      "end_sec": 숫자,
+      "english": "영어 가사 (위 가사 그대로)",
+      "korean": "한국어 가사 (위 가사 그대로)",
+      "emotion": "감정 키워드",
+      "energy": "low|medium|high",
+      "vocal_gender": "남성|여성|혼성",
+      "notes": "보컬 특징 한 문장",
+      "instruments": ["이 구간에서 두드러지는 악기, 없으면 빈 배열"]
+    }
+  ]
 }`
 
   const rawText = await callGemini([
@@ -281,10 +329,37 @@ Respond ONLY in the following JSON format. No markdown.
       vocal_style: string
       arrangement: string
       production: string
+      suno_description: string
     }
+    segments: Array<{
+      start_sec: number
+      end_sec: number
+      english: string
+      korean: string
+      emotion: string
+      energy: 'low' | 'medium' | 'high'
+      vocal_gender: '남성' | '여성' | '혼성'
+      notes: string
+      instruments: string[]
+    }>
   }>(rawText)
 
-  return {
+  const segments: Segment[] = result.segments.map((s, i) => ({
+    id: i,
+    start_sec: s.start_sec,
+    end_sec: s.end_sec,
+    korean: s.korean,
+    english: s.english,
+    emotion: s.emotion,
+    energy: s.energy,
+    vocal_gender: s.vocal_gender ?? '',
+    notes: s.notes,
+    instruments: s.instruments ?? [],
+    words: [],
+    isTranslating: false,
+  }))
+
+  const overview: SongOverviewData = {
     duration: result.duration,
     duration_sec: result.duration_sec,
     overall_emotion: result.overall_emotion,
@@ -292,6 +367,8 @@ Respond ONLY in the following JSON format. No markdown.
     lyrics_summary: result.lyrics_summary ?? '',
     music_analysis: result.music_analysis,
   }
+
+  return { overview, segments }
 }
 
 /**

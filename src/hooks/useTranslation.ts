@@ -2,13 +2,12 @@ import { Segment } from '../types'
 import {
   fileToBase64,
   analyzeComprehensive,
-  analyzePopSongAudio,
+  analyzePopSongComprehensive,
   mapToSegments,
   mapToSongOverview,
   translateSingle,
 } from '../services/geminiService'
-import { transcribeAudio } from '../services/whisperService'
-import { matchLyricsToSegments } from '../services/lyricsMatchingService'
+import { transcribeAudio, getAudioDuration } from '../services/whisperService'
 import { SongOverviewData } from '../types'
 
 interface UseAnalysisDeps {
@@ -78,20 +77,47 @@ export function useTranslation({
   }
 
   /**
-   * 팝송 모드: Whisper(영어 타임스탬프) → 가사 매칭 → Gemini 오디오 분석
+   * 팝송 모드: Gemini 단독 — 오디오 + 가사 → 타임스탬프 매핑 + 곡 분석
+   * 실제 오디오 길이로 타임스탬프를 clamp하여 Gemini hallucination 보정
    */
   const analyzePopSong = async (audioFile: File, englishLyrics: string, koreanLyrics: string) => {
     try {
-      setTranscribing()
-      const whisperSegments = await transcribeAudio(audioFile, 'en')
-      const matchedSegments = matchLyricsToSegments(whisperSegments, englishLyrics, koreanLyrics)
-
       setAnalyzing()
-      const base64Audio = await fileToBase64(audioFile)
+      const [base64Audio, audioDuration] = await Promise.all([
+        fileToBase64(audioFile),
+        getAudioDuration(audioFile),
+      ])
       const mimeType = audioFile.type || 'audio/mpeg'
-      const overview = await analyzePopSongAudio(base64Audio, mimeType)
+      const { overview, segments: rawSegments } = await analyzePopSongComprehensive(
+        base64Audio, mimeType, englishLyrics, koreanLyrics, audioDuration,
+      )
 
-      setResults(matchedSegments, overview)
+      // 타임스탬프 신뢰도 검증: 마지막 세그먼트 end와 실제 곡 길이 비교
+      const lastEnd = rawSegments[rawSegments.length - 1]?.end_sec ?? 0
+      const drift = Math.abs(lastEnd - audioDuration)
+      const driftRatio = drift / audioDuration
+
+      if (driftRatio > 0.3) {
+        // 30% 이상 차이나면 Gemini hallucination으로 판단
+        setError(
+          `타임스탬프 오류가 감지되었습니다. ` +
+          `(곡 길이: ${Math.round(audioDuration)}초, 분석 결과: ${Math.round(lastEnd)}초) ` +
+          `다시 분석을 시도해 주세요.`
+        )
+        return
+      }
+
+      // Gemini 타임스탬프를 실제 오디오 길이 내로 clamp
+      const clampedSegments = rawSegments.map((seg) => ({
+        ...seg,
+        start_sec: Math.min(seg.start_sec, audioDuration),
+        end_sec: Math.min(seg.end_sec, audioDuration),
+      }))
+      if (clampedSegments.length > 0) {
+        clampedSegments[clampedSegments.length - 1].end_sec = audioDuration
+      }
+
+      setResults(clampedSegments, overview)
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : '분석에 실패했습니다.'
       setError(message)
