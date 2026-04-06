@@ -1,3 +1,5 @@
+export type AppMode = 'korean' | 'popsong'
+
 export interface SegmentWord {
   word: string
   start: number
@@ -24,6 +26,11 @@ export interface SongMusicAnalysis {
   genre_hint: string
   instruments: string[]
   vocal_style: string
+  bpm?: string
+  key?: string
+  time_signature?: string
+  production?: string
+  arrangement?: string
 }
 
 export interface SongOverviewData {
