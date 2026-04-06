@@ -2,11 +2,13 @@ import { Segment } from '../types'
 import {
   fileToBase64,
   analyzeComprehensive,
+  analyzePopSongAudio,
   mapToSegments,
   mapToSongOverview,
   translateSingle,
 } from '../services/geminiService'
 import { transcribeAudio } from '../services/whisperService'
+import { matchLyricsToSegments } from '../services/lyricsMatchingService'
 import { SongOverviewData } from '../types'
 
 interface UseAnalysisDeps {
@@ -75,5 +77,26 @@ export function useTranslation({
     }
   }
 
-  return { analyzeAll, retranslateSegment }
+  /**
+   * 팝송 모드: Whisper(영어 타임스탬프) → 가사 매칭 → Gemini 오디오 분석
+   */
+  const analyzePopSong = async (audioFile: File, englishLyrics: string, koreanLyrics: string) => {
+    try {
+      setTranscribing()
+      const whisperSegments = await transcribeAudio(audioFile, 'en')
+      const matchedSegments = matchLyricsToSegments(whisperSegments, englishLyrics, koreanLyrics)
+
+      setAnalyzing()
+      const base64Audio = await fileToBase64(audioFile)
+      const mimeType = audioFile.type || 'audio/mpeg'
+      const overview = await analyzePopSongAudio(base64Audio, mimeType)
+
+      setResults(matchedSegments, overview)
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : '분석에 실패했습니다.'
+      setError(message)
+    }
+  }
+
+  return { analyzeAll, analyzePopSong, retranslateSegment }
 }

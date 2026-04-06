@@ -221,6 +221,80 @@ export function mapToSongOverview(result: GeminiAnalysisResult): SongOverviewDat
 }
 
 /**
+ * 팝송 모드 — 오디오만 분석하여 Suno AI 수준의 상세 음악 분석 수행
+ * 가사 번역은 하지 않고, 장르/BPM/키/악기/보컬/프로덕션만 반환
+ */
+export async function analyzePopSongAudio(
+  base64Audio: string,
+  mimeType: string,
+): Promise<SongOverviewData> {
+  const prompt = `You are a professional music analyst. Listen to the attached audio and provide a detailed Suno AI-level analysis.
+
+[Required Analysis — be as specific as Suno AI]
+1. Genre with sub-genre influences (e.g., "K-Pop ballad with soft rock influences")
+2. Detailed arrangement: describe each instrument's role and tone (e.g., "fingerpicked acoustic guitar", "clean electric guitar with light chorus", "warm electric bass")
+3. Drum/percussion details (kit type, pattern, notable elements like crash cymbals)
+4. Vocal analysis: register, technique, transitions (e.g., "breathy chest voice to clear falsetto")
+5. Exact BPM estimate, time signature, likely key
+6. Production notes: reverb, mix balance, mastering style
+7. Overall emotion and mood (in Korean)
+8. Brief lyrics theme summary (in Korean, 2-3 sentences)
+
+Respond ONLY in the following JSON format. No markdown.
+{
+  "duration_sec": number,
+  "duration": "MM:SS",
+  "overall_emotion": "전체 감정 키워드 (한국어)",
+  "overall_mood": "전체 분위기 한 문장 (한국어)",
+  "lyrics_summary": "가사의 의미와 주제 요약 2~3문장 (한국어)",
+  "music_analysis": {
+    "tempo": "느림|보통|빠름",
+    "bpm": "72 BPM",
+    "key": "E Major",
+    "time_signature": "4/4",
+    "genre_hint": "K-Pop ballad with soft rock influences",
+    "instruments": ["Fingerpicked Acoustic Guitar", "Clean Electric Guitar", "Warm Electric Bass", "Standard Drum Kit"],
+    "vocal_style": "Emotive male vocals transitioning between breathy chest voice and clear falsetto",
+    "arrangement": "The arrangement features a fingerpicked acoustic guitar providing the harmonic foundation, a clean electric guitar with light chorus for textural layers, and a warm electric bass. A standard drum kit enters with a steady backbeat and prominent crash cymbals during the chorus.",
+    "production": "Polished production with moderate reverb on the vocals and a balanced mix that emphasizes the acoustic guitar's resonance"
+  }
+}`
+
+  const rawText = await callGemini([
+    { inline_data: { mime_type: mimeType, data: base64Audio } },
+    { text: prompt },
+  ])
+
+  const result = parseJson<{
+    duration_sec: number
+    duration: string
+    overall_emotion: string
+    overall_mood: string
+    lyrics_summary: string
+    music_analysis: {
+      tempo: string
+      bpm: string
+      key: string
+      time_signature: string
+      genre_hint: string
+      instruments: string[]
+      vocal_style: string
+      arrangement: string
+      production: string
+    }
+  }>(rawText)
+
+  return {
+    duration: result.duration,
+    duration_sec: result.duration_sec,
+    overall_emotion: result.overall_emotion,
+    overall_mood: result.overall_mood,
+    lyrics_summary: result.lyrics_summary ?? '',
+    music_analysis: result.music_analysis,
+  }
+}
+
+/**
  * 분리된 두 구간을 함께 번역 — 각각 자연스럽고, 합쳤을 때도 자연스러운 영어 가사 생성
  */
 export async function translateSplitPair(
