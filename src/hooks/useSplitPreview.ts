@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Segment, SegmentWord } from '../types'
+import { Segment, SegmentWord, AppMode } from '../types'
 import { translateSplitPair } from '../services/geminiService'
 
 export interface PendingSplit {
@@ -35,12 +35,37 @@ function findSplitTime(words: SegmentWord[], ratio: number, start_sec: number, e
   return start_sec + (end_sec - start_sec) * ratio
 }
 
-export function useSplitPreview(updateEnglish: (id: number, value: string) => void) {
+/**
+ * 한국어 텍스트를 비율 기반으로 자연스러운 위치에서 분리한다.
+ * 공백 기준으로 가장 가까운 위치를 찾아 snap한다.
+ */
+function findKoreanSplitPos(korean: string, ratio: number): number {
+  const target = Math.round(ratio * korean.length)
+  if (target <= 0) return 1
+  if (target >= korean.length) return korean.length - 1
+
+  // 근처 공백 탐색 (±10자)
+  let bestPos = target
+  let bestDist = Infinity
+  for (let offset = 0; offset <= 10; offset++) {
+    for (const pos of [target + offset, target - offset]) {
+      if (pos > 0 && pos < korean.length && korean[pos] === ' ' && Math.abs(pos - target) < bestDist) {
+        bestPos = pos
+        bestDist = Math.abs(pos - target)
+      }
+    }
+  }
+  return bestPos
+}
+
+export function useSplitPreview(updateEnglish: (id: number, value: string) => void, mode: AppMode) {
   const [pendingSplit, setPendingSplit] = useState<PendingSplit | null>(null)
-  // 번역 완료 전에 confirm한 split들을 추적 (segmentId → {firstId, secondId})
   const postConfirmMap = useRef<Map<number, PostConfirmInfo>>(new Map())
 
-  const triggerSplit = async (segment: Segment, cursorPos: number) => {
+  /**
+   * 한국어 모드: 한국어 커서 위치 기반 split → Gemini 번역
+   */
+  const triggerSplitKorean = async (segment: Segment, cursorPos: number) => {
     const { korean, start_sec, end_sec, words, id: segmentId } = segment
     if (cursorPos <= 0 || cursorPos >= korean.length) return
 
@@ -51,12 +76,10 @@ export function useSplitPreview(updateEnglish: (id: number, value: string) => vo
     const ratio = cursorPos / korean.length
     const splitTime = findSplitTime(words, ratio, start_sec, end_sec)
 
-    // 미리보기 즉시 표시 (번역 로딩 상태)
     setPendingSplit({ segmentId, korFirst, korSecond, engFirst: '', engSecond: '', splitTime, isTranslating: true })
 
     const [engFirst, engSecond] = await translateSplitPair(korFirst, korSecond)
 
-    // 번역 완료 전에 이미 confirm된 경우: 직접 영어 업데이트 후 종료
     const confirmed = postConfirmMap.current.get(segmentId)
     if (confirmed) {
       updateEnglish(confirmed.firstId, engFirst)
@@ -65,7 +88,6 @@ export function useSplitPreview(updateEnglish: (id: number, value: string) => vo
       return
     }
 
-    // 아직 미리보기 중: 번역 결과를 preview에 반영
     setPendingSplit((prev) =>
       prev?.segmentId === segmentId
         ? { ...prev, engFirst, engSecond, isTranslating: false }
@@ -74,9 +96,42 @@ export function useSplitPreview(updateEnglish: (id: number, value: string) => vo
   }
 
   /**
-   * 번역 진행 중에 사용자가 confirm한 경우:
-   * 즉시 split(영어 빈칸)이 실행된 후 호출되며, 번역 완료 시 자동으로 영어를 채운다.
+   * 팝송 모드: 영어 커서 위치 기반 split → 한국어는 비율로 자동 분리
    */
+  const triggerSplitPopSong = (segment: Segment, cursorPos: number) => {
+    const { english, korean, start_sec, end_sec, words, id: segmentId } = segment
+    if (cursorPos <= 0 || cursorPos >= english.length) return
+
+    const engFirst = english.slice(0, cursorPos).trim()
+    const engSecond = english.slice(cursorPos).trim()
+    if (!engFirst || !engSecond) return
+
+    const ratio = cursorPos / english.length
+    const splitTime = findSplitTime(words, ratio, start_sec, end_sec)
+
+    const korSplitPos = findKoreanSplitPos(korean, ratio)
+    const korFirst = korean.slice(0, korSplitPos).trim()
+    const korSecond = korean.slice(korSplitPos).trim()
+
+    setPendingSplit({
+      segmentId,
+      korFirst,
+      korSecond,
+      engFirst,
+      engSecond,
+      splitTime,
+      isTranslating: false,
+    })
+  }
+
+  const triggerSplit = (segment: Segment, cursorPos: number) => {
+    if (mode === 'popsong') {
+      triggerSplitPopSong(segment, cursorPos)
+    } else {
+      triggerSplitKorean(segment, cursorPos)
+    }
+  }
+
   const registerPostConfirm = (originalSegmentId: number, firstId: number, secondId: number) => {
     postConfirmMap.current.set(originalSegmentId, { firstId, secondId })
     setPendingSplit(null)

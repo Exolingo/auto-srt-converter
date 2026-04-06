@@ -1,9 +1,10 @@
 import { useRef } from 'react'
-import { Segment } from '../../types'
+import { Segment, AppMode } from '../../types'
 
 interface Props {
   segment: Segment
   index: number
+  mode: AppMode
   globalInstruments: string[]
   isDragging: boolean
   isDropTarget: boolean
@@ -59,11 +60,22 @@ function EnergyDots({ energy }: { energy: Segment['energy'] }) {
 }
 
 export function SegmentRow({
-  segment, index, globalInstruments, isDragging, isDropTarget,
+  segment, index, mode, globalInstruments, isDragging, isDropTarget,
   onKoreanChange, onEnglishChange, onRetranslate,
   onDragHandleDown, onPointerEnterCard, onPointerLeaveCard, onSplit, onDeleteRequest,
 }: Props) {
   const koreanCursorRef = useRef(0)
+  const englishCursorRef = useRef(0)
+
+  const isPopSong = mode === 'popsong'
+
+  const handleSplit = () => {
+    if (isPopSong) {
+      onSplit(segment.id, englishCursorRef.current)
+    } else {
+      onSplit(segment.id, koreanCursorRef.current)
+    }
+  }
 
   return (
     <div
@@ -85,8 +97,8 @@ export function SegmentRow({
             ⠿
           </span>
           <button
-            onClick={() => onSplit(segment.id, koreanCursorRef.current)}
-            title="한국어 커서 위치에서 분리"
+            onClick={handleSplit}
+            title={isPopSong ? '영어 커서 위치에서 분리' : '한국어 커서 위치에서 분리'}
             className="text-slate-600 hover:text-amber-400 transition-colors text-sm leading-none shrink-0"
           >
             ✂
@@ -109,8 +121,8 @@ export function SegmentRow({
           <span className="text-xs font-mono text-violet-400 shrink-0">
             {formatTime(segment.start_sec)} → {formatTime(segment.end_sec)}
           </span>
-          <EnergyDots energy={segment.energy} />
-          {(() => {
+          {!isPopSong && <EnergyDots energy={segment.energy} />}
+          {!isPopSong && (() => {
             const displayInstruments = segment.instruments.length > 0 ? segment.instruments : globalInstruments
             return displayInstruments.length > 0 ? (
               <div className="ml-auto flex flex-wrap gap-1 justify-end">
@@ -127,7 +139,7 @@ export function SegmentRow({
 
       {/* 가사 */}
       <div className="p-4 space-y-3">
-        {(segment.vocal_gender || segment.notes) && (
+        {!isPopSong && (segment.vocal_gender || segment.notes) && (
           <div className="flex items-start gap-2">
             <VocalGenderBadge gender={segment.vocal_gender} />
             {segment.notes && (
@@ -135,9 +147,12 @@ export function SegmentRow({
             )}
           </div>
         )}
+
+        {/* 한국어 */}
         <div>
           <label className="text-xs text-slate-500 font-medium block mb-1">
-            한국어 <span className="text-slate-600 font-normal">— 커서 위치에서 ✂ 클릭 시 분리</span>
+            한국어
+            {!isPopSong && <span className="text-slate-600 font-normal"> — 커서 위치에서 ✂ 클릭 시 분리</span>}
           </label>
           <textarea
             value={segment.korean}
@@ -149,22 +164,30 @@ export function SegmentRow({
           />
         </div>
 
+        {/* English */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-xs text-slate-500 font-medium">English</label>
-            <button
-              onClick={() => onRetranslate(segment.id, segment.korean)}
-              disabled={segment.isTranslating}
-              className="text-xs text-violet-400 hover:text-violet-300 disabled:text-slate-600 transition-colors flex items-center gap-1"
-            >
-              {segment.isTranslating
-                ? <><span className="inline-block w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />번역 중...</>
-                : '↺ 재번역'}
-            </button>
+            <label className="text-xs text-slate-500 font-medium">
+              English
+              {isPopSong && <span className="text-slate-600 font-normal"> — 커서 위치에서 ✂ 클릭 시 분리</span>}
+            </label>
+            {!isPopSong && (
+              <button
+                onClick={() => onRetranslate(segment.id, segment.korean)}
+                disabled={segment.isTranslating}
+                className="text-xs text-violet-400 hover:text-violet-300 disabled:text-slate-600 transition-colors flex items-center gap-1"
+              >
+                {segment.isTranslating
+                  ? <><span className="inline-block w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />번역 중...</>
+                  : '↺ 재번역'}
+              </button>
+            )}
           </div>
           <textarea
             value={segment.english}
             onChange={(e) => onEnglishChange(segment.id, e.target.value)}
+            onSelect={(e) => { englishCursorRef.current = e.currentTarget.selectionStart }}
+            onBlur={(e) => { englishCursorRef.current = e.currentTarget.selectionStart }}
             rows={2}
             placeholder={segment.isTranslating ? '번역 중...' : '영어 번역'}
             className="w-full bg-surface-700 border border-surface-600 rounded-lg px-3 py-2 text-slate-200 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-violet-500 placeholder-slate-600"

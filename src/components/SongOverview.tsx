@@ -45,10 +45,31 @@ export function SongOverview({ overview }: Props) {
       <div className="space-y-2">
         <div className="flex flex-wrap gap-2 items-center">
           <Chip label={ma.tempo} color={TEMPO_COLOR[ma.tempo] ?? 'bg-surface-600 text-slate-300 border-surface-500'} />
+          {ma.bpm && <Chip label={ma.bpm} color="bg-emerald-500/20 text-emerald-300 border-emerald-500/30" />}
+          {ma.key && <Chip label={ma.key} color="bg-cyan-500/20 text-cyan-300 border-cyan-500/30" />}
+          {ma.time_signature && <Chip label={ma.time_signature} color="bg-amber-500/20 text-amber-300 border-amber-500/30" />}
           <Chip label={ma.genre_hint} color="bg-violet-500/20 text-violet-300 border-violet-500/30" />
         </div>
         <p className="text-slate-400 text-xs">🎤 {ma.vocal_style}</p>
       </div>
+
+      {/* 편곡 / 프로덕션 상세 (Suno 스타일) */}
+      {(ma.arrangement || ma.production) && (
+        <div className="space-y-2 pt-2 border-t border-surface-600">
+          {ma.arrangement && (
+            <div>
+              <p className="text-xs text-slate-500 font-medium mb-1">Arrangement</p>
+              <p className="text-slate-300 text-xs leading-relaxed">{ma.arrangement}</p>
+            </div>
+          )}
+          {ma.production && (
+            <div>
+              <p className="text-xs text-slate-500 font-medium mb-1">Production</p>
+              <p className="text-slate-300 text-xs leading-relaxed">{ma.production}</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

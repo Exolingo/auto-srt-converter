@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Segment, SongOverviewData } from '../../types'
+import { Segment, SongOverviewData, AppMode } from '../../types'
 import { SegmentRow } from './SegmentRow'
 import { MergePreviewRow } from './MergePreviewRow'
 import { DragGhost } from './DragGhost'
@@ -15,6 +15,7 @@ interface Props {
   segments: Segment[]
   songOverview: SongOverviewData
   fileName: string
+  mode: AppMode
   errorMessage: string
   onKoreanChange: (id: number, value: string) => void
   onEnglishChange: (id: number, value: string) => void
@@ -33,6 +34,7 @@ export function SegmentEditor({
   segments,
   songOverview,
   fileName,
+  mode,
   errorMessage,
   onKoreanChange,
   onEnglishChange,
@@ -47,7 +49,7 @@ export function SegmentEditor({
 
   const draggingSegment = draggingId !== null ? segments.find((s) => s.id === draggingId) : null
   const draggingIndex = draggingId !== null ? segments.findIndex((s) => s.id === draggingId) : -1
-  const { pendingSplit, triggerSplit, registerPostConfirm, cancelSplit } = useSplitPreview(onEnglishChange)
+  const { pendingSplit, triggerSplit, registerPostConfirm, cancelSplit } = useSplitPreview(onEnglishChange, mode)
 
   const mergeIds = pendingMerge ? new Set([pendingMerge.targetId, pendingMerge.sourceId]) : null
   const firstMergeId = pendingMerge
@@ -164,6 +166,7 @@ export function SegmentEditor({
               key={segment.id}
               segment={segment}
               index={idx}
+              mode={mode}
               globalInstruments={songOverview.music_analysis.instruments}
               isDragging={draggingId === segment.id}
               isDropTarget={draggingId !== null && dragOverId === segment.id}

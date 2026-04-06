@@ -1,24 +1,43 @@
+import { AppMode } from '../types'
+
 interface Props {
   step: 'transcribing' | 'analyzing'
+  mode: AppMode
 }
 
 const STEP_INFO = {
-  transcribing: {
-    icon: '🎙️',
-    label: '1 / 2',
-    title: 'Whisper 음성 인식 중...',
-    description: '오디오에서 타임스탬프를 추출합니다.',
+  korean: {
+    transcribing: {
+      icon: '🎙️',
+      label: '1 / 2',
+      title: 'Whisper 음성 인식 중...',
+      description: '오디오에서 타임스탬프를 추출합니다.',
+    },
+    analyzing: {
+      icon: '🎵',
+      label: '2 / 2',
+      title: 'Gemini 종합 분석 중...',
+      description: '가사 매핑 · 영어 번역 · 감정 · 에너지 · 음악 분석을 수행합니다.',
+    },
   },
-  analyzing: {
-    icon: '🎵',
-    label: '2 / 2',
-    title: 'Gemini 종합 분석 중...',
-    description: '가사 매핑 · 영어 번역 · 감정 · 에너지 · 음악 분석을 수행합니다.',
+  popsong: {
+    transcribing: {
+      icon: '🎙️',
+      label: '1 / 2',
+      title: 'Whisper 영어 음성 인식 중...',
+      description: '영어 오디오에서 타임스탬프를 추출합니다.',
+    },
+    analyzing: {
+      icon: '🎵',
+      label: '2 / 2',
+      title: 'Gemini 음악 분석 중...',
+      description: '장르 · BPM · 키 · 악기 · 보컬 · 프로덕션을 분석합니다.',
+    },
   },
 }
 
-export function ProcessingOverlay({ step }: Props) {
-  const info = STEP_INFO[step]
+export function ProcessingOverlay({ step, mode }: Props) {
+  const info = STEP_INFO[mode][step]
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
