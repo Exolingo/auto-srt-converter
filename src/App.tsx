@@ -117,7 +117,7 @@ export default function App() {
               <p className="text-slate-400 text-sm mt-2">
                 {mode === 'korean'
                   ? 'MP3와 가사를 입력하면 Gemini가 타임스탬프 매핑 · 영어 번역 · 감정/에너지 분석을 자동으로 수행합니다'
-                  : 'MP3와 영어/한국어 가사를 입력하면 Whisper가 타임라인을 분석하고 가사를 매핑합니다'}
+                  : 'MP3와 영어/한국어 가사를 입력하면 Gemini가 타임스탬프 매핑과 음악 분석을 수행합니다'}
               </p>
             </div>
             <UploadZone mode={mode} onAnalyze={handleAnalyze} onAnalyzePopSong={handleAnalyzePopSong} />

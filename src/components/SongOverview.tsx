@@ -23,7 +23,7 @@ export function SongOverview({ overview }: Props) {
 
   return (
     <div className="bg-gradient-to-br from-surface-800 to-surface-700 rounded-2xl border border-surface-600 p-5 mb-5 space-y-4">
-      {/* 전체 감정 + 분위기 */}
+      {/* 전체 감정 + 러닝타임 */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs text-slate-500 font-medium mb-1">전체 감정</p>
@@ -41,6 +41,13 @@ export function SongOverview({ overview }: Props) {
         </p>
       )}
 
+      {/* Suno 스타일 연속 설명문 */}
+      {ma.suno_description && (
+        <p className="text-slate-200 text-sm leading-relaxed bg-surface-900/50 rounded-xl px-4 py-3 border border-surface-600">
+          {ma.suno_description}
+        </p>
+      )}
+
       {/* 음악 분석 태그 */}
       <div className="space-y-2">
         <div className="flex flex-wrap gap-2 items-center">
@@ -50,21 +57,21 @@ export function SongOverview({ overview }: Props) {
           {ma.time_signature && <Chip label={ma.time_signature} color="bg-amber-500/20 text-amber-300 border-amber-500/30" />}
           <Chip label={ma.genre_hint} color="bg-violet-500/20 text-violet-300 border-violet-500/30" />
         </div>
-        <p className="text-slate-400 text-xs">🎤 {ma.vocal_style}</p>
+        {ma.vocal_style && <p className="text-slate-400 text-xs">🎤 {ma.vocal_style}</p>}
       </div>
 
-      {/* 편곡 / 프로덕션 상세 (Suno 스타일) */}
+      {/* 편곡 / 프로덕션 상세 */}
       {(ma.arrangement || ma.production) && (
         <div className="space-y-2 pt-2 border-t border-surface-600">
           {ma.arrangement && (
             <div>
-              <p className="text-xs text-slate-500 font-medium mb-1">Arrangement</p>
+              <p className="text-xs text-slate-500 font-medium mb-1">편곡</p>
               <p className="text-slate-300 text-xs leading-relaxed">{ma.arrangement}</p>
             </div>
           )}
           {ma.production && (
             <div>
-              <p className="text-xs text-slate-500 font-medium mb-1">Production</p>
+              <p className="text-xs text-slate-500 font-medium mb-1">프로덕션</p>
               <p className="text-slate-300 text-xs leading-relaxed">{ma.production}</p>
             </div>
           )}

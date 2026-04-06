@@ -22,16 +22,16 @@ const STEP_INFO = {
   },
   popsong: {
     transcribing: {
-      icon: '🎙️',
-      label: '1 / 2',
-      title: 'Whisper 영어 음성 인식 중...',
-      description: '영어 오디오에서 타임스탬프를 추출합니다.',
+      icon: '🎵',
+      label: '1 / 1',
+      title: 'Gemini 분석 중...',
+      description: '타임스탬프 매핑 · 음악 분석을 수행합니다.',
     },
     analyzing: {
       icon: '🎵',
-      label: '2 / 2',
-      title: 'Gemini 음악 분석 중...',
-      description: '장르 · BPM · 키 · 악기 · 보컬 · 프로덕션을 분석합니다.',
+      label: '1 / 1',
+      title: 'Gemini 분석 중...',
+      description: '타임스탬프 매핑 · 음악 분석을 수행합니다.',
     },
   },
 }

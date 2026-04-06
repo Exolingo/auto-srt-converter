@@ -40,8 +40,12 @@ export function UploadZone({ mode, onAnalyze, onAnalyzePopSong }: Props) {
       ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
       : `${(bytes / 1024).toFixed(0)} KB`
 
-  const engLineCount = englishLyrics.split('\n').filter((l) => l.trim()).length
-  const korLineCount = koreanLyrics.split('\n').filter((l) => l.trim()).length
+  const sectionTagRegex = /^\[.*\]$/
+  const countLyricLines = (text: string) =>
+    text.split('\n').map((l) => l.trim()).filter((l) => l && !sectionTagRegex.test(l)).length
+
+  const engLineCount = countLyricLines(englishLyrics)
+  const korLineCount = countLyricLines(koreanLyrics)
   const lineCountMatch = engLineCount === korLineCount
   const canStartPopSong = selectedFile && englishLyrics.trim() && koreanLyrics.trim()
 
@@ -138,7 +142,7 @@ export function UploadZone({ mode, onAnalyze, onAnalyzePopSong }: Props) {
           {(englishLyrics.trim() || koreanLyrics.trim()) && (
             <div className={`text-xs px-3 py-2 rounded-lg ${lineCountMatch ? 'bg-emerald-900/30 text-emerald-400' : 'bg-amber-900/30 text-amber-400'}`}>
               English: {engLineCount}줄 / 한국어: {korLineCount}줄
-              {lineCountMatch ? ' ✓' : ' — 줄 수가 다릅니다. 맞춰주세요.'}
+              {lineCountMatch ? ' ✓' : ' — 줄 수가 다릅니다 ([Verse] 등 태그·공백 제외 기준)'}
             </div>
           )}
         </div>
