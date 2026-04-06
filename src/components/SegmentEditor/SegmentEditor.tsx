@@ -100,7 +100,7 @@ export function SegmentEditor({
             <span className="text-slate-500 text-sm shrink-0">{segments.length}개 문장</span>
           </div>
           <button
-            onClick={() => downloadSrtFile(segments, fileName)}
+            onClick={() => downloadSrtFile(segments, fileName, mode)}
             className="bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors shrink-0"
           >
             ⬇ SRT 다운로드
@@ -196,7 +196,7 @@ export function SegmentEditor({
       {segments.length > 5 && (
         <div className="pt-6 text-center">
           <button
-            onClick={() => downloadSrtFile(segments, fileName)}
+            onClick={() => downloadSrtFile(segments, fileName, mode)}
             className="bg-violet-600 hover:bg-violet-500 text-white font-semibold px-8 py-3 rounded-lg transition-colors"
           >
             ⬇ SRT 다운로드
