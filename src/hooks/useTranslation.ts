@@ -8,6 +8,7 @@ import {
   translateSingle,
 } from '../services/geminiService'
 import { transcribeAudio, getAudioDuration } from '../services/whisperService'
+import { sanitizePopSongTimings } from '../utils/segmentSanitizer'
 import { SongOverviewData } from '../types'
 
 interface UseAnalysisDeps {
@@ -77,34 +78,38 @@ export function useTranslation({
   }
 
   /**
-   * 팝송 모드: Gemini 단독 — 오디오 + 가사 → 타임스탬프 매핑 + 곡 분석
-   * 실제 오디오 길이로 타임스탬프를 clamp하여 Gemini hallucination 보정
+   * 팝송 모드: Whisper(타이밍 앵커) + Gemini(가사 매핑 + 곡 분석)
+   * Whisper word-level 타임스탬프를 Gemini에 전달하여 hallucination 방지
    */
   const analyzePopSong = async (audioFile: File, englishLyrics: string, koreanLyrics: string) => {
     try {
-      setAnalyzing()
-      const [base64Audio, audioDuration] = await Promise.all([
-        fileToBase64(audioFile),
+      // 1단계: Whisper 영어 음성인식 → 타이밍 앵커 확보 (가사 힌트로 인식률 향상)
+      setTranscribing()
+      const cleanLyricsHint = englishLyrics
+        .split('\n').map((l) => l.trim()).filter((l) => l && !/^\[.*\]$/.test(l)).join('\n')
+      const [whisperSegments, audioDuration] = await Promise.all([
+        transcribeAudio(audioFile, 'en', cleanLyricsHint),
         getAudioDuration(audioFile),
       ])
+
+      // 2단계: Gemini 종합 분석 (Whisper 타임스탬프 참고)
+      setAnalyzing()
+      const base64Audio = await fileToBase64(audioFile)
       const mimeType = audioFile.type || 'audio/mpeg'
+      const allWords = whisperSegments.flatMap((s) => s.words)
+
       const { overview, segments: rawSegments } = await analyzePopSongComprehensive(
-        base64Audio, mimeType, englishLyrics, koreanLyrics, audioDuration,
+        base64Audio, mimeType, englishLyrics, koreanLyrics, audioDuration, whisperSegments,
       )
 
-      // 타임스탬프 신뢰도 검증: 마지막 세그먼트 end와 실제 곡 길이 비교
+      // Gemini 타임스탬프 drift 경고 (clamp + sanitizer로 보정하므로 hard error 제거)
       const lastEnd = rawSegments[rawSegments.length - 1]?.end_sec ?? 0
-      const drift = Math.abs(lastEnd - audioDuration)
-      const driftRatio = drift / audioDuration
-
-      if (driftRatio > 0.3) {
-        // 30% 이상 차이나면 Gemini hallucination으로 판단
-        setError(
-          `타임스탬프 오류가 감지되었습니다. ` +
-          `(곡 길이: ${Math.round(audioDuration)}초, 분석 결과: ${Math.round(lastEnd)}초) ` +
-          `다시 분석을 시도해 주세요.`
+      const driftRatio = Math.abs(lastEnd - audioDuration) / audioDuration
+      if (driftRatio > 0.1) {
+        console.warn(
+          `[analyzePopSong] Gemini 타임스탬프 drift ${(driftRatio * 100).toFixed(0)}%` +
+          ` (곡: ${Math.round(audioDuration)}초, Gemini: ${Math.round(lastEnd)}초) → clamp + sanitizer로 보정`,
         )
-        return
       }
 
       // Gemini 타임스탬프를 실제 오디오 길이 내로 clamp
@@ -117,7 +122,16 @@ export function useTranslation({
         clampedSegments[clampedSegments.length - 1].end_sec = audioDuration
       }
 
-      setResults(clampedSegments, overview)
+      // 이상치 감지 및 보정 (비정상적으로 긴 세그먼트/갭 → 텍스트 비율 재분배)
+      const sanitizedSegments = sanitizePopSongTimings(clampedSegments, audioDuration)
+
+      // Whisper word-level 데이터를 세그먼트에 매핑 (split 시 정확한 타이밍 제공)
+      const segmentsWithWords = sanitizedSegments.map((seg) => ({
+        ...seg,
+        words: allWords.filter((w) => w.start >= seg.start_sec && w.start < seg.end_sec),
+      }))
+
+      setResults(segmentsWithWords, overview)
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : '분석에 실패했습니다.'
       setError(message)

@@ -241,6 +241,7 @@ export async function analyzePopSongComprehensive(
   englishLyrics: string,
   koreanLyrics: string,
   audioDuration: number,
+  whisperSegments: WhisperSegment[] = [],
 ): Promise<PopSongAnalysisResult> {
   const cleanEng = englishLyrics.split('\n').map((l) => l.trim()).filter((l) => l && !/^\[.*\]$/.test(l))
   const cleanKor = koreanLyrics.split('\n').map((l) => l.trim()).filter((l) => l && !/^\[.*\]$/.test(l))
@@ -250,17 +251,25 @@ export async function analyzePopSongComprehensive(
     return `${i + 1}. [EN] ${eng}\n   [KO] ${kor}`
   }).join('\n')
 
+  const whisperList = whisperSegments
+    .map((s) => `[${formatTime(s.start)}~${formatTime(s.end)}] (${s.start.toFixed(2)}s~${s.end.toFixed(2)}s): ${s.text}`)
+    .join('\n')
+
+  const whisperSection = whisperList
+    ? `\n[Whisper 음성인식 타임스탬프 — 반드시 참고]\n아래는 Whisper가 오디오에서 인식한 영어 텍스트와 타임스탬프입니다.\n각 가사 줄의 start_sec/end_sec를 아래 타임스탬프에 최대한 맞추세요.\nWhisper 인식 결과의 텍스트가 정확하지 않더라도, 타이밍은 신뢰할 수 있습니다.\n${whisperList}\n`
+    : ''
+
   const prompt = `당신은 팝송 뮤직비디오 전문 분석가입니다.
 첨부된 오디오를 직접 들으면서 아래 가사를 정확한 타임스탬프에 매핑하고, 상세 음악 분석을 수행하세요.
 
 [가사 — 영어 원문 + 한국어 번역]
 ${numberedLyrics}
-
+${whisperSection}
 [중요: 오디오 정보]
 이 곡의 실제 총 길이는 정확히 ${audioDuration.toFixed(1)}초입니다. 모든 타임스탬프는 이 범위 내에 있어야 합니다.
 
 [타임스탬프 매핑 규칙 — 반드시 준수]
-1. 오디오를 직접 들으면서 각 가사 줄이 실제로 불리는 시작/끝 시간을 초 단위로 기록
+1. Whisper 타임스탬프를 기준으로 각 가사 줄의 시작/끝 시간을 매핑하세요
 2. 가사가 없는 구간(간주, 아웃트로, 허밍)은 segments에 포함하지 마세요
 3. 각 가사 줄은 반드시 한 번만 사용하고, 순서대로 매핑
 4. 마지막 세그먼트의 end_sec는 ${audioDuration.toFixed(1)}초를 넘지 않아야 함

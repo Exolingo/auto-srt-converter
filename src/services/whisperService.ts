@@ -37,7 +37,7 @@ export function getAudioDuration(file: File): Promise<number> {
   })
 }
 
-export async function transcribeAudio(file: File, language: 'ko' | 'en' = 'ko'): Promise<WhisperSegment[]> {
+export async function transcribeAudio(file: File, language: 'ko' | 'en' = 'ko', lyricsHint?: string): Promise<WhisperSegment[]> {
   const apiKey = import.meta.env.VITE_OPENAI_API_KEY
   if (!apiKey) throw new Error('OpenAI API 키가 설정되지 않았습니다.')
 
@@ -48,8 +48,11 @@ export async function transcribeAudio(file: File, language: 'ko' | 'en' = 'ko'):
   formData.append('timestamp_granularities[]', 'segment')
   formData.append('timestamp_granularities[]', 'word')
   formData.append('language', language)
-  // Whisper의 prompt는 지시문이 아닌 "이전 텍스트" 역할 — 가사 스타일 힌트만 제공
-  if (language === 'ko') {
+  // Whisper의 prompt는 "이전 텍스트" 역할 — 가사를 넣으면 인식률이 크게 향상됨
+  if (lyricsHint) {
+    // Whisper prompt 제한(224 tokens) — 앞부분 가사만 전달
+    formData.append('prompt', lyricsHint.slice(0, 800))
+  } else if (language === 'ko') {
     formData.append('prompt', '한국어 노래 가사입니다. 뮤직비디오의 가사를 정확하게 받아쓰기 해주세요.')
   }
 
