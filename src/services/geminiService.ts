@@ -225,24 +225,31 @@ export function mapToSongOverview(result: GeminiAnalysisResult): SongOverviewDat
 }
 
 /**
- * 팝송 모드 — Gemini가 오디오를 직접 들으면서:
- * 1. 영어/한국어 가사를 정확한 타임스탬프에 매핑
- * 2. 상세 음악 분석 수행
- * Whisper 없이 Gemini 단독으로 처리
+ * 팝송 모드 — Gemini는 곡 분석 + 줄별 감정/에너지/보컬 분석만 수행.
+ * 타임스탬프는 Whisper 정렬 결과를 사용하므로 Gemini가 매핑하지 않음.
  */
-export interface PopSongAnalysisResult {
-  overview: SongOverviewData
-  segments: Segment[]
+export interface PopSongLineAnalysis {
+  line_index: number
+  emotion: string
+  energy: 'low' | 'medium' | 'high'
+  vocal_gender: '남성' | '여성' | '혼성'
+  notes: string
+  instruments: string[]
 }
 
-export async function analyzePopSongComprehensive(
+export interface PopSongMusicResult {
+  overview: SongOverviewData
+  line_analyses: PopSongLineAnalysis[]
+  suspicious_line_indices: number[]
+}
+
+export async function analyzePopSongMusic(
   base64Audio: string,
   mimeType: string,
   englishLyrics: string,
   koreanLyrics: string,
   audioDuration: number,
-  whisperSegments: WhisperSegment[] = [],
-): Promise<PopSongAnalysisResult> {
+): Promise<PopSongMusicResult> {
   const cleanEng = englishLyrics.split('\n').map((l) => l.trim()).filter((l) => l && !/^\[.*\]$/.test(l))
   const cleanKor = koreanLyrics.split('\n').map((l) => l.trim()).filter((l) => l && !/^\[.*\]$/.test(l))
 
@@ -251,41 +258,35 @@ export async function analyzePopSongComprehensive(
     return `${i + 1}. [EN] ${eng}\n   [KO] ${kor}`
   }).join('\n')
 
-  const whisperList = whisperSegments
-    .map((s) => `[${formatTime(s.start)}~${formatTime(s.end)}] (${s.start.toFixed(2)}s~${s.end.toFixed(2)}s): ${s.text}`)
-    .join('\n')
-
-  const whisperSection = whisperList
-    ? `\n[Whisper 음성인식 타임스탬프 — 반드시 참고]\n아래는 Whisper가 오디오에서 인식한 영어 텍스트와 타임스탬프입니다.\n각 가사 줄의 start_sec/end_sec를 아래 타임스탬프에 최대한 맞추세요.\nWhisper 인식 결과의 텍스트가 정확하지 않더라도, 타이밍은 신뢰할 수 있습니다.\n${whisperList}\n`
-    : ''
-
   const prompt = `당신은 팝송 뮤직비디오 전문 분석가입니다.
-첨부된 오디오를 직접 들으면서 아래 가사를 정확한 타임스탬프에 매핑하고, 상세 음악 분석을 수행하세요.
+첨부된 오디오를 들으면서 아래 가사 각 줄에 대한 음악적 특성을 분석하세요.
 
 [가사 — 영어 원문 + 한국어 번역]
 ${numberedLyrics}
-${whisperSection}
-[중요: 오디오 정보]
-이 곡의 실제 총 길이는 정확히 ${audioDuration.toFixed(1)}초입니다. 모든 타임스탬프는 이 범위 내에 있어야 합니다.
 
-[타임스탬프 매핑 규칙 — 반드시 준수]
-1. Whisper 타임스탬프를 기준으로 각 가사 줄의 시작/끝 시간을 매핑하세요
-2. 가사가 없는 구간(간주, 아웃트로, 허밍)은 segments에 포함하지 마세요
-3. 각 가사 줄은 반드시 한 번만 사용하고, 순서대로 매핑
-4. 마지막 세그먼트의 end_sec는 ${audioDuration.toFixed(1)}초를 넘지 않아야 함
-5. segments 배열의 길이는 반드시 가사 줄 수(${cleanEng.length}개)와 동일해야 함
+[오디오 정보]
+이 곡의 실제 총 길이는 ${audioDuration.toFixed(1)}초입니다.
+
+[중요 — 타임스탬프 작업 금지]
+- 절대 타임스탬프(start_sec/end_sec 등)를 생성하지 마세요. 타이밍은 별도 시스템(Whisper)이 담당합니다.
+- 각 줄의 line_index(1부터 시작하는 번호)에 대한 감정/에너지/보컬/악기 분석만 수행하세요.
+- 곡을 들으면서 가사 줄의 순서대로 진행됨을 가정하고 분석하세요.
+
+[검증 작업]
+- 오디오를 들었을 때, 제공된 영어 가사와 실제 들리는 가사가 의미상 크게 달라 보이는 줄이 있으면 suspicious_line_indices 배열에 해당 번호를 넣으세요.
+- 확신이 없다면 빈 배열로 두세요. 의심 가는 줄만 선별적으로 기재.
 
 [음악 분석 항목]
 1. 장르 + 서브장르 영향
-2. 편곡: 각 악기의 역할, 톤, 주법을 구체적으로 묘사
-3. 드럼/퍼커션: 킷 종류, 비트 패턴, 특징적 요소
-4. 보컬: 성별, 음역대, 발성 테크닉, 구간별 변화
+2. 편곡: 각 악기의 역할, 톤, 주법
+3. 드럼/퍼커션: 킷 종류, 비트 패턴, 특징
+4. 보컬: 성별, 음역대, 발성 테크닉
 5. BPM, 박자, 키
-6. 프로덕션: 이펙트(리버브, 딜레이 등), 믹스 밸런스
+6. 프로덕션: 이펙트, 믹스 밸런스
 
 반드시 아래 JSON 형식으로만 응답하세요. 마크다운 없이.
 {
-  "duration_sec": 숫자,
+  "duration_sec": ${audioDuration.toFixed(1)},
   "duration": "MM:SS",
   "overall_emotion": "감정 키워드 (한국어)",
   "overall_mood": "분위기 한 문장 (한국어)",
@@ -302,20 +303,20 @@ ${whisperSection}
     "production": "프로덕션 특징",
     "suno_description": "쉼표로 연결된 연속 설명문"
   },
-  "segments": [
+  "line_analyses": [
     {
-      "start_sec": 숫자,
-      "end_sec": 숫자,
-      "english": "영어 가사 (위 가사 그대로)",
-      "korean": "한국어 가사 (위 가사 그대로)",
+      "line_index": 1,
       "emotion": "감정 키워드",
       "energy": "low|medium|high",
       "vocal_gender": "남성|여성|혼성",
       "notes": "보컬 특징 한 문장",
-      "instruments": ["이 구간에서 두드러지는 악기, 없으면 빈 배열"]
+      "instruments": ["이 줄에서 두드러지는 악기, 없으면 빈 배열"]
     }
-  ]
-}`
+  ],
+  "suspicious_line_indices": []
+}
+
+line_analyses 배열의 길이는 반드시 가사 줄 수(${cleanEng.length}개)와 동일해야 함.`
 
   const rawText = await callGemini([
     { inline_data: { mime_type: mimeType, data: base64Audio } },
@@ -340,33 +341,16 @@ ${whisperSection}
       production: string
       suno_description: string
     }
-    segments: Array<{
-      start_sec: number
-      end_sec: number
-      english: string
-      korean: string
+    line_analyses: Array<{
+      line_index: number
       emotion: string
       energy: 'low' | 'medium' | 'high'
       vocal_gender: '남성' | '여성' | '혼성'
       notes: string
       instruments: string[]
     }>
+    suspicious_line_indices?: number[]
   }>(rawText)
-
-  const segments: Segment[] = result.segments.map((s, i) => ({
-    id: i,
-    start_sec: s.start_sec,
-    end_sec: s.end_sec,
-    korean: s.korean,
-    english: s.english,
-    emotion: s.emotion,
-    energy: s.energy,
-    vocal_gender: s.vocal_gender ?? '',
-    notes: s.notes,
-    instruments: s.instruments ?? [],
-    words: [],
-    isTranslating: false,
-  }))
 
   const overview: SongOverviewData = {
     duration: result.duration,
@@ -377,7 +361,11 @@ ${whisperSection}
     music_analysis: result.music_analysis,
   }
 
-  return { overview, segments }
+  return {
+    overview,
+    line_analyses: result.line_analyses,
+    suspicious_line_indices: result.suspicious_line_indices ?? [],
+  }
 }
 
 /**

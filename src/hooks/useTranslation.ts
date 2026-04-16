@@ -2,18 +2,20 @@ import { Segment } from '../types'
 import {
   fileToBase64,
   analyzeComprehensive,
-  analyzePopSongComprehensive,
+  analyzePopSongMusic,
   mapToSegments,
   mapToSongOverview,
   translateSingle,
 } from '../services/geminiService'
 import { transcribeAudio, getAudioDuration } from '../services/whisperService'
-import { sanitizePopSongTimings } from '../utils/segmentSanitizer'
+import { alignLyricsToWhisper } from '../services/lyricsAlignmentService'
 import { SongOverviewData } from '../types'
 
 interface UseAnalysisDeps {
   segments: Segment[]
   setTranscribing: () => void
+  setVerifying: () => void
+  setRetrying: (attempt: number) => void
   setAnalyzing: () => void
   setResults: (segments: Segment[], overview: SongOverviewData) => void
   setError: (message: string) => void
@@ -21,9 +23,13 @@ interface UseAnalysisDeps {
   updateEnglish: (id: number, value: string) => void
 }
 
+const MAX_WHISPER_ATTEMPTS = 2
+
 export function useTranslation({
   segments,
   setTranscribing,
+  setVerifying,
+  setRetrying,
   setAnalyzing,
   setResults,
   setError,
@@ -32,8 +38,7 @@ export function useTranslation({
 }: UseAnalysisDeps) {
 
   /**
-   * 전체 분석 실행:
-   * Whisper(타임스탬프) → Gemini(오디오+가사 종합 분석)
+   * 한국어 모드: Whisper(타임스탬프) → Gemini(오디오+가사 종합 분석)
    */
   const analyzeAll = async (audioFile: File, userLyrics: string) => {
     try {
@@ -78,60 +83,80 @@ export function useTranslation({
   }
 
   /**
-   * 팝송 모드: Whisper(타이밍 앵커) + Gemini(가사 매핑 + 곡 분석)
-   * Whisper word-level 타임스탬프를 Gemini에 전달하여 hallucination 방지
+   * 팝송 모드:
+   * 1. Whisper 영어 음성 인식 (가사 힌트)
+   * 2. 사용자 가사와 시퀀스 정렬 → 품질 검증
+   * 3. 품질 부족 시 Whisper 재시도 (최대 MAX_WHISPER_ATTEMPTS)
+   * 4. Gemini 곡 분석 (타임스탬프는 건드리지 않음)
+   * 5. 정렬 타이밍 + Gemini 분석 병합
    */
   const analyzePopSong = async (audioFile: File, englishLyrics: string, koreanLyrics: string) => {
     try {
-      // 1단계: Whisper 영어 음성인식 → 타이밍 앵커 확보 (가사 힌트로 인식률 향상)
-      setTranscribing()
       const cleanLyricsHint = englishLyrics
         .split('\n').map((l) => l.trim()).filter((l) => l && !/^\[.*\]$/.test(l)).join('\n')
-      const [whisperSegments, audioDuration] = await Promise.all([
-        transcribeAudio(audioFile, 'en', cleanLyricsHint),
-        getAudioDuration(audioFile),
-      ])
 
-      // 2단계: Gemini 종합 분석 (Whisper 타임스탬프 참고)
+      const audioDuration = await getAudioDuration(audioFile)
+
+      let alignment = null
+      let whisperSegments = null
+      for (let attempt = 1; attempt <= MAX_WHISPER_ATTEMPTS; attempt++) {
+        if (attempt === 1) setTranscribing()
+        else setRetrying(attempt - 1)
+
+        const promptHint = attempt === 1
+          ? cleanLyricsHint.slice(0, 800)
+          : cleanLyricsHint.slice(-800)
+
+        whisperSegments = await transcribeAudio(audioFile, 'en', promptHint)
+
+        setVerifying()
+        alignment = alignLyricsToWhisper(englishLyrics, koreanLyrics, whisperSegments, audioDuration)
+
+        console.info(
+          `[analyzePopSong] Whisper 시도 ${attempt}: 줄 커버리지 ${(alignment.quality.line_coverage * 100).toFixed(0)}%,` +
+          ` 단어 매칭률 ${(alignment.quality.anchor_ratio * 100).toFixed(0)}%, 사유: ${alignment.quality.reason}`,
+        )
+
+        if (alignment.quality.acceptable) break
+        if (attempt === MAX_WHISPER_ATTEMPTS) {
+          console.warn(`[analyzePopSong] Whisper ${MAX_WHISPER_ATTEMPTS}회 시도 후에도 품질 미달 — 마지막 결과로 진행`)
+        }
+      }
+
+      if (!alignment || !whisperSegments) {
+        throw new Error('Whisper 정렬에 실패했습니다.')
+      }
+
       setAnalyzing()
       const base64Audio = await fileToBase64(audioFile)
       const mimeType = audioFile.type || 'audio/mpeg'
-      const allWords = whisperSegments.flatMap((s) => s.words)
+      const music = await analyzePopSongMusic(base64Audio, mimeType, englishLyrics, koreanLyrics, audioDuration)
 
-      const { overview, segments: rawSegments } = await analyzePopSongComprehensive(
-        base64Audio, mimeType, englishLyrics, koreanLyrics, audioDuration, whisperSegments,
-      )
+      const suspicious = new Set(music.suspicious_line_indices.map((n) => n - 1))
+      const analysisByIndex = new Map(music.line_analyses.map((a) => [a.line_index - 1, a]))
 
-      // Gemini 타임스탬프 drift 경고 (clamp + sanitizer로 보정하므로 hard error 제거)
-      const lastEnd = rawSegments[rawSegments.length - 1]?.end_sec ?? 0
-      const driftRatio = Math.abs(lastEnd - audioDuration) / audioDuration
-      if (driftRatio > 0.1) {
-        console.warn(
-          `[analyzePopSong] Gemini 타임스탬프 drift ${(driftRatio * 100).toFixed(0)}%` +
-          ` (곡: ${Math.round(audioDuration)}초, Gemini: ${Math.round(lastEnd)}초) → clamp + sanitizer로 보정`,
-        )
-      }
+      const mergedSegments: Segment[] = alignment.lines.map((line, i) => {
+        const analysis = analysisByIndex.get(line.line_index)
+        const isSuspicious = suspicious.has(line.line_index)
+        return {
+          id: i,
+          start_sec: line.start_sec,
+          end_sec: line.end_sec,
+          korean: line.korean,
+          english: line.english,
+          emotion: analysis?.emotion ?? '',
+          energy: analysis?.energy ?? '',
+          vocal_gender: analysis?.vocal_gender ?? '',
+          notes: isSuspicious
+            ? `[가사 불일치 의심] ${analysis?.notes ?? ''}`.trim()
+            : analysis?.notes ?? '',
+          instruments: analysis?.instruments ?? [],
+          words: line.words,
+          isTranslating: false,
+        }
+      })
 
-      // Gemini 타임스탬프를 실제 오디오 길이 내로 clamp
-      const clampedSegments = rawSegments.map((seg) => ({
-        ...seg,
-        start_sec: Math.min(seg.start_sec, audioDuration),
-        end_sec: Math.min(seg.end_sec, audioDuration),
-      }))
-      if (clampedSegments.length > 0) {
-        clampedSegments[clampedSegments.length - 1].end_sec = audioDuration
-      }
-
-      // 이상치 감지 및 보정 (비정상적으로 긴 세그먼트/갭 → 텍스트 비율 재분배)
-      const sanitizedSegments = sanitizePopSongTimings(clampedSegments, audioDuration)
-
-      // Whisper word-level 데이터를 세그먼트에 매핑 (split 시 정확한 타이밍 제공)
-      const segmentsWithWords = sanitizedSegments.map((seg) => ({
-        ...seg,
-        words: allWords.filter((w) => w.start >= seg.start_sec && w.start < seg.end_sec),
-      }))
-
-      setResults(segmentsWithWords, overview)
+      setResults(mergedSegments, music.overview)
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : '분석에 실패했습니다.'
       setError(message)

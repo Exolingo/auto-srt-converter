@@ -1,13 +1,21 @@
 import { useState } from 'react'
 import { Segment, SongOverviewData } from '../types'
 
-export type TranscriptionStatus = 'idle' | 'transcribing' | 'analyzing' | 'done' | 'error'
+export type TranscriptionStatus =
+  | 'idle'
+  | 'transcribing'
+  | 'verifying'
+  | 'retrying'
+  | 'analyzing'
+  | 'done'
+  | 'error'
 
 export function useTranscription() {
   const [segments, setSegments] = useState<Segment[]>([])
   const [songOverview, setSongOverview] = useState<SongOverviewData | null>(null)
   const [status, setStatus] = useState<TranscriptionStatus>('idle')
   const [errorMessage, setErrorMessage] = useState('')
+  const [retryAttempt, setRetryAttempt] = useState(0)
 
   const setResults = (newSegments: Segment[], overview: SongOverviewData) => {
     setSegments(newSegments)
@@ -16,6 +24,11 @@ export function useTranscription() {
   }
 
   const setTranscribing = () => setStatus('transcribing')
+  const setVerifying = () => setStatus('verifying')
+  const setRetrying = (attempt: number) => {
+    setRetryAttempt(attempt)
+    setStatus('retrying')
+  }
   const setAnalyzing = () => setStatus('analyzing')
 
   const setError = (message: string) => {
@@ -88,6 +101,7 @@ export function useTranscription() {
     setSongOverview(null)
     setStatus('idle')
     setErrorMessage('')
+    setRetryAttempt(0)
   }
 
   return {
@@ -95,7 +109,10 @@ export function useTranscription() {
     songOverview,
     status,
     errorMessage,
+    retryAttempt,
     setTranscribing,
+    setVerifying,
+    setRetrying,
     setAnalyzing,
     setResults,
     setError,
