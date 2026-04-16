@@ -20,6 +20,7 @@ interface WhisperVerboseResponse {
     text: string
     words?: WhisperWord[]
   }>
+  words?: WhisperWord[]
 }
 
 export function getAudioDuration(file: File): Promise<number> {
@@ -69,11 +70,18 @@ export async function transcribeAudio(file: File, language: 'ko' | 'en' = 'ko', 
 
   const data: WhisperVerboseResponse = await response.json()
 
-  return data.segments.map((seg) => ({
-    id: seg.id,
-    start: seg.start,
-    end: seg.end,
-    text: seg.text.trim(),
-    words: seg.words ?? [],
-  }))
+  const topLevelWords = data.words ?? []
+
+  return data.segments.map((seg) => {
+    const segWords = seg.words && seg.words.length > 0
+      ? seg.words
+      : topLevelWords.filter((w) => w.start >= seg.start && w.end <= seg.end)
+    return {
+      id: seg.id,
+      start: seg.start,
+      end: seg.end,
+      text: seg.text.trim(),
+      words: segWords,
+    }
+  })
 }
