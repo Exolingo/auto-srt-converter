@@ -2,20 +2,18 @@ import { Segment } from '../types'
 import {
   fileToBase64,
   analyzeComprehensive,
-  analyzePopSongMusic,
+  analyzePopSongComprehensive,
   mapToSegments,
   mapToSongOverview,
   translateSingle,
 } from '../services/geminiService'
-import { transcribeAudio, getAudioDuration } from '../services/whisperService'
+import { transcribeAudio, getAudioDuration, WhisperSegment } from '../services/whisperService'
 import { alignLyricsToWhisper } from '../services/lyricsAlignmentService'
 import { SongOverviewData } from '../types'
 
 interface UseAnalysisDeps {
   segments: Segment[]
   setTranscribing: () => void
-  setVerifying: () => void
-  setRetrying: (attempt: number) => void
   setAnalyzing: () => void
   setResults: (segments: Segment[], overview: SongOverviewData) => void
   setError: (message: string) => void
@@ -23,13 +21,11 @@ interface UseAnalysisDeps {
   updateEnglish: (id: number, value: string) => void
 }
 
-const MAX_WHISPER_ATTEMPTS = 2
+const LCS_OVERRIDE_THRESHOLD_SEC = 3
 
 export function useTranslation({
   segments,
   setTranscribing,
-  setVerifying,
-  setRetrying,
   setAnalyzing,
   setResults,
   setError,
@@ -83,80 +79,39 @@ export function useTranslation({
   }
 
   /**
-   * 팝송 모드:
-   * 1. Whisper 영어 음성 인식 (가사 힌트)
-   * 2. 사용자 가사와 시퀀스 정렬 → 품질 검증
-   * 3. 품질 부족 시 Whisper 재시도 (최대 MAX_WHISPER_ATTEMPTS)
-   * 4. Gemini 곡 분석 (타임스탬프는 건드리지 않음)
-   * 5. 정렬 타이밍 + Gemini 분석 병합
+   * 팝송 모드 하이브리드:
+   * 1. Whisper word-level 인식 (가사 힌트)
+   * 2. Gemini가 오디오 들으며 매핑 + 곡 분석 (word 타임스탬프 제공)
+   * 3. LCS 정렬로 Gemini 드리프트 교정 — 앵커와 3초 이상 차이나면 LCS 타임스탬프로 덮어쓰기
    */
   const analyzePopSong = async (audioFile: File, englishLyrics: string, koreanLyrics: string) => {
     try {
+      setTranscribing()
       const cleanLyricsHint = englishLyrics
         .split('\n').map((l) => l.trim()).filter((l) => l && !/^\[.*\]$/.test(l)).join('\n')
 
-      const audioDuration = await getAudioDuration(audioFile)
-
-      let alignment = null
-      let whisperSegments = null
-      for (let attempt = 1; attempt <= MAX_WHISPER_ATTEMPTS; attempt++) {
-        if (attempt === 1) setTranscribing()
-        else setRetrying(attempt - 1)
-
-        const promptHint = attempt === 1
-          ? cleanLyricsHint.slice(0, 800)
-          : cleanLyricsHint.slice(-800)
-
-        whisperSegments = await transcribeAudio(audioFile, 'en', promptHint)
-
-        setVerifying()
-        alignment = alignLyricsToWhisper(englishLyrics, koreanLyrics, whisperSegments, audioDuration)
-
-        console.info(
-          `[analyzePopSong] Whisper 시도 ${attempt}: 줄 커버리지 ${(alignment.quality.line_coverage * 100).toFixed(0)}%,` +
-          ` 단어 매칭률 ${(alignment.quality.anchor_ratio * 100).toFixed(0)}%, 사유: ${alignment.quality.reason}`,
-        )
-
-        if (alignment.quality.acceptable) break
-        if (attempt === MAX_WHISPER_ATTEMPTS) {
-          console.warn(`[analyzePopSong] Whisper ${MAX_WHISPER_ATTEMPTS}회 시도 후에도 품질 미달 — 마지막 결과로 진행`)
-        }
-      }
-
-      if (!alignment || !whisperSegments) {
-        throw new Error('Whisper 정렬에 실패했습니다.')
-      }
+      const [whisperSegments, audioDuration] = await Promise.all([
+        transcribeAudio(audioFile, 'en', cleanLyricsHint),
+        getAudioDuration(audioFile),
+      ])
 
       setAnalyzing()
       const base64Audio = await fileToBase64(audioFile)
       const mimeType = audioFile.type || 'audio/mpeg'
-      const music = await analyzePopSongMusic(base64Audio, mimeType, englishLyrics, koreanLyrics, audioDuration)
 
-      const suspicious = new Set(music.suspicious_line_indices.map((n) => n - 1))
-      const analysisByIndex = new Map(music.line_analyses.map((a) => [a.line_index - 1, a]))
+      const { overview, segments: geminiSegments } = await analyzePopSongComprehensive(
+        base64Audio, mimeType, englishLyrics, koreanLyrics, audioDuration, whisperSegments,
+      )
 
-      const mergedSegments: Segment[] = alignment.lines.map((line, i) => {
-        const analysis = analysisByIndex.get(line.line_index)
-        const isSuspicious = suspicious.has(line.line_index)
-        return {
-          id: i,
-          start_sec: line.start_sec,
-          end_sec: line.end_sec,
-          korean: line.korean,
-          english: line.english,
-          emotion: analysis?.emotion ?? '',
-          energy: analysis?.energy ?? '',
-          vocal_gender: analysis?.vocal_gender ?? '',
-          notes: isSuspicious
-            ? `[가사 불일치 의심] ${analysis?.notes ?? ''}`.trim()
-            : analysis?.notes ?? '',
-          instruments: analysis?.instruments ?? [],
-          words: line.words,
-          isTranslating: false,
-        }
-      })
+      const corrected = correctDriftWithLcs(
+        geminiSegments,
+        englishLyrics,
+        koreanLyrics,
+        whisperSegments,
+        audioDuration,
+      )
 
-      setResults(mergedSegments, music.overview)
+      setResults(corrected, overview)
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : '분석에 실패했습니다.'
       setError(message)
@@ -164,4 +119,33 @@ export function useTranslation({
   }
 
   return { analyzeAll, analyzePopSong, retranslateSegment }
+}
+
+function correctDriftWithLcs(
+  geminiSegments: Segment[],
+  englishLyrics: string,
+  koreanLyrics: string,
+  whisperSegments: WhisperSegment[],
+  audioDuration: number,
+): Segment[] {
+  const alignment = alignLyricsToWhisper(englishLyrics, koreanLyrics, whisperSegments, audioDuration)
+
+  const corrected = geminiSegments.map((seg, i) => {
+    const lcsLine = alignment.lines[i]
+    if (!lcsLine || lcsLine.anchor_count === 0) return seg
+    const drift = Math.abs(seg.start_sec - lcsLine.start_sec)
+    if (drift < LCS_OVERRIDE_THRESHOLD_SEC) return seg
+    console.info(
+      `[analyzePopSong] drift ${drift.toFixed(1)}s 감지 — 세그먼트 #${i + 1} Gemini ${seg.start_sec.toFixed(1)}s → LCS ${lcsLine.start_sec.toFixed(1)}s로 교정`,
+    )
+    return { ...seg, start_sec: lcsLine.start_sec, end_sec: Math.max(lcsLine.end_sec, seg.end_sec) }
+  })
+
+  for (let i = 0; i < corrected.length - 1; i++) {
+    if (corrected[i].end_sec > corrected[i + 1].start_sec) {
+      corrected[i] = { ...corrected[i], end_sec: corrected[i + 1].start_sec }
+    }
+  }
+
+  return corrected
 }

@@ -15,10 +15,7 @@ export default function App() {
     songOverview,
     status,
     errorMessage,
-    retryAttempt,
     setTranscribing,
-    setVerifying,
-    setRetrying,
     setAnalyzing,
     setResults,
     setError,
@@ -34,8 +31,6 @@ export default function App() {
   const { analyzeAll, analyzePopSong, retranslateSegment } = useTranslation({
     segments,
     setTranscribing,
-    setVerifying,
-    setRetrying,
     setAnalyzing,
     setResults,
     setError,
@@ -63,8 +58,6 @@ export default function App() {
 
   const processingStep =
     status === 'transcribing' ? 'transcribing'
-    : status === 'verifying' ? 'verifying'
-    : status === 'retrying' ? 'retrying'
     : status === 'analyzing' ? 'analyzing'
     : null
 
@@ -76,7 +69,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-surface-900 text-white">
-      {processingStep && <ProcessingOverlay step={processingStep} mode={mode} retryAttempt={retryAttempt} />}
+      {processingStep && <ProcessingOverlay step={processingStep} mode={mode} />}
 
       <header className="border-b border-surface-700 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">

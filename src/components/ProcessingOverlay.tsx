@@ -1,73 +1,43 @@
 import { AppMode } from '../types'
 
-type ProcessingStep = 'transcribing' | 'verifying' | 'retrying' | 'analyzing'
-
 interface Props {
-  step: ProcessingStep
+  step: 'transcribing' | 'analyzing'
   mode: AppMode
-  retryAttempt?: number
 }
 
-interface StepInfo {
-  icon: string
-  label: string
-  title: string
-  description: string
-}
-
-const KOREAN_STEPS: Partial<Record<ProcessingStep, StepInfo>> = {
-  transcribing: {
-    icon: '🎙️',
-    label: '1 / 2',
-    title: 'Whisper 음성 인식 중...',
-    description: '오디오에서 타임스탬프를 추출합니다.',
+const STEP_INFO = {
+  korean: {
+    transcribing: {
+      icon: '🎙️',
+      label: '1 / 2',
+      title: 'Whisper 음성 인식 중...',
+      description: '오디오에서 타임스탬프를 추출합니다.',
+    },
+    analyzing: {
+      icon: '🎵',
+      label: '2 / 2',
+      title: 'Gemini 종합 분석 중...',
+      description: '가사 매핑 · 영어 번역 · 감정 · 에너지 · 음악 분석을 수행합니다.',
+    },
   },
-  analyzing: {
-    icon: '🎵',
-    label: '2 / 2',
-    title: 'Gemini 종합 분석 중...',
-    description: '가사 매핑 · 영어 번역 · 감정 · 에너지 · 음악 분석을 수행합니다.',
-  },
-}
-
-const POPSONG_STEPS: Partial<Record<ProcessingStep, StepInfo>> = {
-  transcribing: {
-    icon: '🎙️',
-    label: '1 / 3',
-    title: 'Whisper 영어 음성 인식 중...',
-    description: '오디오에서 단어별 타임스탬프를 추출합니다.',
-  },
-  verifying: {
-    icon: '🔎',
-    label: '2 / 3',
-    title: '가사 매칭 검증 중...',
-    description: 'Whisper 인식 결과를 사용자 가사와 정렬하고 품질을 점검합니다.',
-  },
-  retrying: {
-    icon: '🔁',
-    label: '2 / 3',
-    title: 'Whisper 가사 인식 오류 감지 — 재요청 중...',
-    description: '품질이 충분하지 않아 Whisper를 다시 호출합니다.',
-  },
-  analyzing: {
-    icon: '🎵',
-    label: '3 / 3',
-    title: 'Gemini 곡 분석 중...',
-    description: '장르·편곡·보컬·줄별 감정 분석을 수행합니다.',
+  popsong: {
+    transcribing: {
+      icon: '🎙️',
+      label: '1 / 2',
+      title: 'Whisper 영어 음성 인식 중...',
+      description: '오디오에서 단어별 타임스탬프를 추출합니다.',
+    },
+    analyzing: {
+      icon: '🎵',
+      label: '2 / 2',
+      title: 'Gemini 종합 분석 중...',
+      description: '가사 매핑 · 곡 분석 · LCS 드리프트 교정을 수행합니다.',
+    },
   },
 }
 
-function resolveInfo(mode: AppMode, step: ProcessingStep, retryAttempt?: number): StepInfo {
-  const table = mode === 'popsong' ? POPSONG_STEPS : KOREAN_STEPS
-  const info = table[step] ?? table.transcribing!
-  if (step === 'retrying' && retryAttempt && retryAttempt > 0) {
-    return { ...info, title: `${info.title} (${retryAttempt}차 재시도)` }
-  }
-  return info
-}
-
-export function ProcessingOverlay({ step, mode, retryAttempt }: Props) {
-  const info = resolveInfo(mode, step, retryAttempt)
+export function ProcessingOverlay({ step, mode }: Props) {
+  const info = STEP_INFO[mode][step]
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
