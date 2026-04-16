@@ -13,22 +13,23 @@ function pad(n: number, length: number): string {
 }
 
 export function generateSrtContent(segments: Segment[], mode: AppMode = 'korean'): string {
-  return segments
+  const body = segments
     .map((seg, index) => {
       const nextStart = segments[index + 1]?.start_sec
       const endSec = nextStart !== undefined ? nextStart : seg.end_sec
       const timeRange = `${formatSrtTime(seg.start_sec)} --> ${formatSrtTime(endSec)}`
       const lines = mode === 'popsong'
-        ? [seg.english, seg.korean].filter(Boolean).join('\n')
-        : [seg.korean, seg.english].filter(Boolean).join('\n')
-      return `${index + 1}\n${timeRange}\n${lines}`
+        ? [seg.english, seg.korean].filter(Boolean).join('\r\n')
+        : [seg.korean, seg.english].filter(Boolean).join('\r\n')
+      return `${index + 1}\r\n${timeRange}\r\n${lines}`
     })
-    .join('\n\n')
+    .join('\r\n\r\n')
+  return body + '\r\n\r\n'
 }
 
 export function downloadSrtFile(segments: Segment[], sourceFileName: string, mode: AppMode = 'korean'): void {
   const content = generateSrtContent(segments, mode)
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+  const blob = new Blob(['\uFEFF', content], { type: 'text/plain;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url

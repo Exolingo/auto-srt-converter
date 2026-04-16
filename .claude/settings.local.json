@@ -7,7 +7,13 @@
       "Bash(npm install:*)",
       "Bash(npx tsc:*)",
       "Bash(npm run:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(npx vite:*)",
+      "Bash(npx kill-port:*)",
+      "Bash(ls:*)",
+      "Bash(curl:*)",
+      "Bash(npx --yes tsx -e ':*)",
+      "Bash(npx tsx:*)"
     ]
   }
 }
